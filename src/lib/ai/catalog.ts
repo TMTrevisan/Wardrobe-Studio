@@ -60,8 +60,13 @@ export function chooseChromaKey(colors: Array<string | null | undefined>): strin
 type CatalogPromptInput = {
   name: string;
   category: string;
+  subcategory?: string | null;
+  brand?: string | null;
   color: string;
   material?: string | null;
+  fit?: string | null;
+  pattern?: string | null;
+  formality?: string | null;
   details?: string | null;
   chromaKey: string;
 };
@@ -76,13 +81,19 @@ Remove the wearer, body, skin, hair, underlayers, adjacent clothing, hanger, man
 
 Source-grounded identity:
 - Category: ${input.category}
+- Subcategory: ${input.subcategory || 'not specified'}
+- Brand: ${input.brand || 'not specified; never invent branding'}
 - Dominant color: ${input.color}
 - Material or texture: ${input.material || 'preserve only what is visible in the reference'}
+- Fit or silhouette: ${input.fit || 'preserve only what is visible in the reference'}
+- Pattern: ${input.pattern || 'not specified'}
+- Formality: ${input.formality || 'not specified'}
 - Construction details: ${input.details || 'preserve only clearly visible construction'}
 
 Do not redesign the garment. Do not invent logos, lettering, labels, pockets, seams, fasteners,
 hardware, colors, graphics, or decoration that are not supported by the reference.
 If a hidden detail is uncertain, use the simplest construction consistent with visible evidence.
+Treat database facts as constraints and the source photograph as the visual authority when they conflict.
 
 Composition: one garment only, centered front-facing product view, complete silhouette fully inside a
 square canvas with generous even padding. Include every sleeve, cuff, strap, hem, leg, toe, or endpoint.

@@ -69,8 +69,13 @@ export const POST = withUser(async ({ user, request }) => {
   const prompt = buildCatalogPrompt({
     name,
     category: garment.category,
+    subcategory: garment.sub_category,
+    brand: garment.brand,
     color: `${garment.color_family}${garment.hex_code ? ` (${garment.hex_code})` : ''}`,
     material: garment.fabric_type,
+    fit: garment.fit_block,
+    pattern: garment.pattern,
+    formality: garment.formality,
     details: garment.style_detail,
     chromaKey,
   });
@@ -121,6 +126,7 @@ export const POST = withUser(async ({ user, request }) => {
       size: CATALOG_SIZE,
       quality: CATALOG_QUALITY,
       background: 'opaque',
+      response_format: 'b64_json',
     });
     const base64 = generated.data?.[0]?.b64_json;
     if (!base64) throw new Error('GPT Image returned no image data.');

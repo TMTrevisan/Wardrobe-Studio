@@ -8,6 +8,7 @@ import { GarmentDrawer } from './GarmentDrawer';
 import { ImportPanel } from './ImportPanel';
 import { MoreIcon, PlusIcon, SparkleIcon } from './StudioIcons';
 import { runCatalogBatch } from '@/lib/ai/catalog-batch';
+import { supabase } from '@/lib/supabase';
 
 type Props = { demoMode?: boolean };
 type View = 'All' | 'Tops' | 'Jackets' | 'Bottoms' | 'Accessories' | 'Shoes' | 'Outfits';
@@ -36,12 +37,35 @@ export function WardrobeStudio({ demoMode = false }: Props) {
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
+  const recoverFromUnauthorized = useCallback(async () => {
+    // A persisted browser session can outlive its refresh token. Do not leave
+    // the user on an unrecoverable "Try again" panel in that state.
+    await supabase.auth.signOut({ scope: 'local' });
+    setGarments([]);
+    setSelected(null);
+    setError('Your session expired. Please sign in again.');
+  }, []);
+
   const loadGarments = useCallback(async () => {
     if (demoMode) return;
     setLoading(true);
     try {
       const response = await fetch('/api/items');
       const json = await response.json();
+      if (response.status === 401) {
+        const { data, error: refreshError } = await supabase.auth.refreshSession();
+        if (!refreshError && data.session) {
+          const retry = await fetch('/api/items');
+          const retryJson = await retry.json();
+          if (retry.ok) {
+            setGarments(retryJson.data?.items ?? retryJson.items ?? []);
+            setError('');
+            return;
+          }
+        }
+        await recoverFromUnauthorized();
+        return;
+      }
       if (!response.ok) throw new Error(json.error || 'Could not load your wardrobe.');
       setGarments(json.data?.items ?? json.items ?? []);
       setError('');
@@ -50,7 +74,7 @@ export function WardrobeStudio({ demoMode = false }: Props) {
     } finally {
       setLoading(false);
     }
-  }, [demoMode]);
+  }, [demoMode, recoverFromUnauthorized]);
 
   useEffect(() => {
     const task = window.setTimeout(() => void loadGarments(), 0);
@@ -66,6 +90,25 @@ export function WardrobeStudio({ demoMode = false }: Props) {
     setGarments((current) => current.filter((item) => item.id !== garmentId));
     setSelected(null);
   };
+
+  const openGarment = (garment: Garment) => {
+    setSelected(garment);
+    window.history.pushState({ wardrobeStudioGarment: garment.id }, '', `#garment=${encodeURIComponent(garment.id)}`);
+  };
+
+  const closeGarment = () => {
+    if (window.location.hash.startsWith('#garment=')) {
+      window.history.back();
+      return;
+    }
+    setSelected(null);
+  };
+
+  useEffect(() => {
+    const closeDrawerOnBack = () => setSelected(null);
+    window.addEventListener('popstate', closeDrawerOnBack);
+    return () => window.removeEventListener('popstate', closeDrawerOnBack);
+  }, []);
 
   const createCatalogBatch = async (requestedIds: string[]) => {
     const eligible = garments.filter((garment) => requestedIds.includes(garment.id) && garment.catalog_status !== 'ready' && garment.catalog_source_ready);
@@ -137,7 +180,7 @@ export function WardrobeStudio({ demoMode = false }: Props) {
       </nav>
 
       {demoMode && <div className="preview-banner"><span>Preview wardrobe</span><p>Add Supabase keys to use your existing closet and imports.</p></div>}
-      {error && <div className="studio-error" role="alert">{error}<button onClick={loadGarments}>Try again</button></div>}
+      {error && <div className="studio-error" role="alert">{error}<button onClick={() => void loadGarments()}>Try again</button><button onClick={() => void recoverFromUnauthorized()}>Sign out &amp; sign in again</button></div>}
 
       {view === 'Outfits' ? (
         <section className="outfit-stage">
@@ -153,7 +196,7 @@ export function WardrobeStudio({ demoMode = false }: Props) {
             <div className="wardrobe-grid">{visible.map((garment) => {
               const image = garment.catalog_asset_url || garment.primary_image_url;
               const isSelected = selectedIds.has(garment.id);
-              return <button className={`garment-tile ${selectionMode ? 'selection-mode' : ''} ${isSelected ? 'selected' : ''}`} key={garment.id} aria-pressed={selectionMode ? isSelected : undefined} onClick={() => selectionMode ? toggleSelection(garment.id) : setSelected(garment)}>
+              return <button className={`garment-tile ${selectionMode ? 'selection-mode' : ''} ${isSelected ? 'selected' : ''}`} key={garment.id} aria-pressed={selectionMode ? isSelected : undefined} onClick={() => selectionMode ? toggleSelection(garment.id) : openGarment(garment)}>
                 <span className="garment-image">{image ? <Image src={image} alt={garment.display_name || garment.sub_category} width={600} height={730} unoptimized /> : <span className="empty-garment"><PlusIcon /></span>}{garment.catalog_status === 'ready' && <span className="catalog-dot" title="Catalog image ready" />}</span>
                 {selectionMode && <span className="tile-selection" aria-hidden="true">{isSelected ? '✓' : ''}</span>}
                 <span className="garment-label"><strong>{garment.display_name || garment.sub_category}</strong><small>{garment.color_family || garment.category}</small></span>
@@ -165,7 +208,7 @@ export function WardrobeStudio({ demoMode = false }: Props) {
 
       <button className="floating-import" onClick={() => setImportOpen(true)}><PlusIcon /><span>Add photos</span></button>
 
-      {selected && <GarmentDrawer key={selected.id} garment={selected} demoMode={demoMode} onClose={() => setSelected(null)} onUpdated={updateGarment} onDeleted={deleteGarment} />}
+      {selected && <GarmentDrawer key={selected.id} garment={selected} demoMode={demoMode} onClose={closeGarment} onUpdated={updateGarment} onDeleted={deleteGarment} />}
       {importOpen && <ImportPanel demoMode={demoMode} onClose={() => setImportOpen(false)} onApproved={loadGarments} />}
     </main>
   );

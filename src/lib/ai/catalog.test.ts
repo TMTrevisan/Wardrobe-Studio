@@ -11,11 +11,18 @@ describe('catalog prompt helpers', () => {
     const prompt = buildCatalogPrompt({
       name: 'navy shirt',
       category: 'Tops',
+      subcategory: 'Oxford shirt',
+      brand: 'Example Brand',
       color: 'navy',
+      fit: 'Tailored',
+      pattern: 'Solid',
       chromaKey: '#00FF00',
     });
     expect(prompt).toContain('Do not redesign');
     expect(prompt).toContain('#00FF00');
+    expect(prompt).toContain('Example Brand');
+    expect(prompt).toContain('Oxford shirt');
+    expect(prompt).toContain('Tailored');
   });
 
   it('uses cost-conscious catalog defaults and only accepts valid GPT Image 2 sizes', () => {
