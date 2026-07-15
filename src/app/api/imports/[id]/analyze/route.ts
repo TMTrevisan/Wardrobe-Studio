@@ -1,5 +1,6 @@
 import { withUser, fail, ok } from '@/lib/api';
 import { GEMINI_VISION_MODEL, getGemini } from '@/lib/ai/gemini';
+import sharp from 'sharp';
 
 const analysisSchema = {
   type: 'object',
@@ -81,6 +82,9 @@ export const POST = withUser(async ({ user, request }) => {
         .download(asset.storage_path);
       if (downloadError || !blob) throw downloadError || new Error('Photo download failed.');
       const buffer = Buffer.from(await blob.arrayBuffer());
+      const metadata = await sharp(buffer).rotate().metadata();
+      const sourceWidth = metadata.width || asset.width || 1;
+      const sourceHeight = metadata.height || asset.height || 1;
       const response = await gemini.models.generateContent({
         model: GEMINI_VISION_MODEL,
         contents: [
@@ -109,9 +113,23 @@ Do not treat two layers as one garment.` },
         const { data: inserted, error: insertError } = await user.client
           .from('garment_detections').insert(rows).select();
         if (insertError) throw insertError;
-        detections.push(...(inserted || []));
+        const { data: signed } = await user.client.storage
+          .from(asset.bucket || 'wardrobe-sources')
+          .createSignedUrl(asset.storage_path, 60 * 60);
+        detections.push(...(inserted || []).map((detection) => ({
+          ...detection,
+          source_preview_url: signed?.signedUrl || null,
+          source_width: sourceWidth,
+          source_height: sourceHeight,
+          source_filename: asset.original_filename,
+        })));
       }
-      await user.client.from('source_assets').update({ status: 'analyzed', analysis_json: parsed }).eq('id', asset.id);
+      await user.client.from('source_assets').update({
+        status: 'analyzed',
+        analysis_json: parsed,
+        width: sourceWidth,
+        height: sourceHeight,
+      }).eq('id', asset.id);
     } catch (assetError: unknown) {
       const message = assetError instanceof Error ? assetError.message : 'Photo analysis failed.';
       await user.client.from('source_assets').update({ status: 'failed', analysis_json: { error: message } }).eq('id', asset.id);

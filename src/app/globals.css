@@ -176,11 +176,14 @@ img { display: block; max-width: 100%; }
 
 .review-copy { margin: 0 0 18px; color: var(--muted); font-size: 11px; line-height: 1.55; }
 .detection-list { border-top: 1px solid var(--line); }
-.detection-row { width: 100%; min-height: 69px; display: grid; grid-template-columns: 24px 42px 1fr; align-items: center; gap: 13px; padding: 10px 8px; border: 0; border-bottom: 1px solid var(--line); background: transparent; text-align: left; }
+.detection-row { width: 100%; min-height: 94px; display: grid; grid-template-columns: 24px 84px 1fr; align-items: center; gap: 13px; padding: 8px; border: 0; border-bottom: 1px solid var(--line); background: transparent; text-align: left; }
 .detection-row:hover { background: rgba(255,255,255,.35); }
 .detection-check { width: 20px; height: 20px; display: grid; place-items: center; border: 1px solid var(--line); }
 .detection-row.selected .detection-check { background: var(--ink); color: white; border-color: var(--ink); }
 .detection-check svg { width: 13px; }
+.detection-visual { width: 84px; height: 78px; display: grid; place-items: center; overflow: hidden; background: var(--paper-deep); }
+.detection-preview { position: relative; display: block; overflow: hidden; background: #d8d1c5; }
+.detection-preview img { position: absolute; max-width: none; object-fit: fill; }
 .detection-swatch { width: 42px; height: 42px; border-radius: 50%; border: 1px solid rgba(0,0,0,.1); }
 .detection-copy { min-width: 0; display: flex; flex-direction: column; gap: 5px; }
 .detection-copy strong { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 12px; font-weight: 550; }
@@ -239,6 +242,8 @@ img { display: block; max-width: 100%; }
   .selection-summary small { max-width: 240px; line-height: 1.4; }
   .scanning-stage, .done-stage { min-height: 390px; }
   .review-actions { bottom: -25px; margin: 20px -20px -25px; padding: 14px 20px; }
+  .detection-row { grid-template-columns: 24px 76px 1fr; gap: 10px; padding-left: 2px; padding-right: 2px; }
+  .detection-visual { width: 76px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

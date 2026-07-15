@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
 import { GooglePhotosButton } from './GooglePhotosButton';
 import { CheckIcon, CloseIcon, FolderIcon, ImageIcon, SparkleIcon, UploadIcon } from './StudioIcons';
+import { getDetectionPreviewLayout, type NormalizedBoundingBox } from '@/lib/image/detection-preview';
 
 type Detection = {
   id: string;
@@ -12,6 +13,11 @@ type Detection = {
   description?: string | null;
   confidence: number;
   colors?: Array<{ name?: string; hex?: string }>;
+  bbox?: NormalizedBoundingBox;
+  source_preview_url?: string | null;
+  source_width?: number;
+  source_height?: number;
+  source_filename?: string | null;
 };
 
 type Props = { demoMode: boolean; onClose: () => void; onApproved: () => void };
@@ -165,8 +171,23 @@ export function ImportPanel({ demoMode, onClose, onApproved }: Props) {
           <div className="detection-list">{detections.map((detection) => {
             const checked = selected.has(detection.id);
             const color = detection.colors?.[0]?.hex || '#d8d1c5';
+            const preview = detection.bbox && detection.source_preview_url
+              ? getDetectionPreviewLayout(
+                detection.bbox,
+                detection.source_width || 1,
+                detection.source_height || 1,
+              )
+              : null;
             return <button className={`detection-row ${checked ? 'selected' : ''}`} key={detection.id} onClick={() => setSelected((current) => { const next = new Set(current); if (checked) next.delete(detection.id); else next.add(detection.id); return next; })}>
-              <span className="detection-check">{checked && <CheckIcon />}</span><span className="detection-swatch" style={{ backgroundColor: color }} /><span className="detection-copy"><strong>{detection.description || detection.sub_category || detection.category}</strong><small>{detection.category} · {Math.round(detection.confidence * 100)}% confidence</small></span>
+              <span className="detection-check">{checked && <CheckIcon />}</span>
+              <span className="detection-visual">
+                {preview ? <span className="detection-preview" style={preview.frame}>
+                  {/* A signed URL keeps the private source photo visible only during review. */}
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={detection.source_preview_url!} alt="" style={preview.image} />
+                </span> : <span className="detection-swatch" style={{ backgroundColor: color }} />}
+              </span>
+              <span className="detection-copy"><strong>{detection.description || detection.sub_category || detection.category}</strong><small>{detection.category} · {Math.round(detection.confidence * 100)}% confidence{detection.source_filename ? ` · ${detection.source_filename}` : ''}</small></span>
             </button>;
           })}</div>
           {error && <p className="panel-error" role="alert">{error}</p>}
