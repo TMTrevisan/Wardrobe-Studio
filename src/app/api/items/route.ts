@@ -84,20 +84,21 @@ export const GET = withUser(async ({ user }) => {
     const primary = images.find((img: any) => img.is_primary_profile) || images[0];
     const legacyPrimaryPath = getLegacyWardrobeImagePath(primary?.storage_path);
     const legacyPrimaryUrl = legacyPrimaryPath ? legacySignedUrls.get(legacyPrimaryPath) || null : null;
-    let assetUrl: string | null = null;
-    const displayAsset = catalog || sourceCrop;
-    if (displayAsset?.bucket && displayAsset?.storage_path) {
+    const signAsset = async (asset: any) => {
+      if (!asset?.bucket || !asset?.storage_path) return null;
       const { data: signed } = await user.client.storage
-        .from(displayAsset.bucket)
-        .createSignedUrl(displayAsset.storage_path, 60 * 60);
-      assetUrl = signed?.signedUrl || null;
-    }
+        .from(asset.bucket)
+        .createSignedUrl(asset.storage_path, 60 * 60);
+      return signed?.signedUrl || null;
+    };
+    const [catalogUrl, sourceCropUrl] = await Promise.all([signAsset(catalog), signAsset(sourceCrop)]);
     return {
       ...item,
       images,
       assets,
-      primary_image_url: assetUrl || legacyPrimaryUrl || (legacyPrimaryPath ? null : primary?.storage_path || null),
-      catalog_asset_url: catalog ? assetUrl : null,
+      primary_image_url: catalogUrl || sourceCropUrl || legacyPrimaryUrl || (legacyPrimaryPath ? null : primary?.storage_path || null),
+      catalog_asset_url: catalogUrl,
+      source_asset_url: sourceCropUrl,
       catalog_source_ready: Boolean(sourceCrop?.bucket && sourceCrop?.storage_path),
     };
   }));
@@ -155,13 +156,24 @@ export const DELETE = withUser(async ({ user, request }) => {
     return fail(400, 'Invalid UUID format provided for deletion.');
   }
 
-  // 1. Fetch all associated garment images.
-  const { data: images, error: fetchError } = await user.client
+  // 1. Fetch all associated legacy and Studio assets while the user-owned
+  // garment is still visible through RLS. Database rows cascade on delete, but
+  // Storage objects must be removed explicitly.
+  const [{ data: images, error: fetchError }, { data: assets, error: assetFetchError }] = await Promise.all([
+    user.client
     .from('garment_images')
     .select('storage_path')
-    .eq('garment_id', id);
+    .eq('garment_id', id),
+    user.client
+      .from('garment_assets')
+      .select('bucket, storage_path')
+      .eq('garment_id', id),
+  ]);
 
   if (fetchError) return fail(500, `Failed to fetch images: ${fetchError.message}`);
+  if (assetFetchError && !assetFetchError.message.includes('garment_assets')) {
+    return fail(500, `Failed to fetch Studio assets: ${assetFetchError.message}`);
+  }
 
   // 2. Remove from storage.
   if (images && images.length > 0) {
@@ -181,6 +193,18 @@ export const DELETE = withUser(async ({ user, request }) => {
         console.warn('Failed to remove images from storage:', storageError.message);
       }
     }
+  }
+
+  const assetPathsByBucket = new Map<string, string[]>();
+  for (const asset of assets || []) {
+    if (!asset.bucket || !asset.storage_path) continue;
+    const paths = assetPathsByBucket.get(asset.bucket) || [];
+    paths.push(asset.storage_path);
+    assetPathsByBucket.set(asset.bucket, paths);
+  }
+  for (const [bucket, paths] of assetPathsByBucket) {
+    const { error: storageError } = await user.client.storage.from(bucket).remove(paths);
+    if (storageError) console.warn('Failed to remove Studio assets from storage:', { bucket, message: storageError.message });
   }
 
   // 3. Clean up referencing saved outfits.

@@ -60,6 +60,10 @@ export function WardrobeStudio({ demoMode = false }: Props) {
     setGarments((current) => current.map((item) => item.id === updated.id ? updated : item));
     setSelected(updated);
   };
+  const deleteGarment = (garmentId: string) => {
+    setGarments((current) => current.filter((item) => item.id !== garmentId));
+    setSelected(null);
+  };
 
   const createCatalogBatch = async () => {
     const eligible = garments.filter((garment) => garment.catalog_status !== 'ready' && garment.catalog_source_ready).slice(0, 20);
@@ -127,7 +131,7 @@ export function WardrobeStudio({ demoMode = false }: Props) {
 
       <button className="floating-import" onClick={() => setImportOpen(true)}><PlusIcon /><span>Add photos</span></button>
 
-      {selected && <GarmentDrawer key={selected.id} garment={selected} demoMode={demoMode} onClose={() => setSelected(null)} onUpdated={updateGarment} />}
+      {selected && <GarmentDrawer key={selected.id} garment={selected} demoMode={demoMode} onClose={() => setSelected(null)} onUpdated={updateGarment} onDeleted={deleteGarment} />}
       {importOpen && <ImportPanel demoMode={demoMode} onClose={() => setImportOpen(false)} onApproved={loadGarments} />}
     </main>
   );

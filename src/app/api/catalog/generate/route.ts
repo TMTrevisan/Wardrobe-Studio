@@ -1,4 +1,5 @@
 import { toFile } from 'openai';
+import sharp from 'sharp';
 import { withUser, fail, ok } from '@/lib/api';
 import { buildCatalogPrompt, CATALOG_MODEL, CATALOG_QUALITY, CATALOG_SIZE, chooseChromaKey } from '@/lib/ai/catalog';
 import { getOpenAI } from '@/lib/ai/openai';
@@ -14,6 +15,20 @@ type StoredImage = {
   kind?: string;
   is_primary_profile?: boolean;
 };
+
+/**
+ * Source crops can originate from older imports and different camera codecs.
+ * Always decode and re-encode them before handing them to the image API so
+ * EXIF orientation, color mode, and unusual JPEG metadata cannot invalidate a
+ * paid generation request.
+ */
+async function normalizeCatalogSource(input: Buffer): Promise<Buffer> {
+  return sharp(input, { failOn: 'none', limitInputPixels: 30_000_000 })
+    .rotate()
+    .flatten({ background: '#f5f0e8' })
+    .jpeg({ quality: 92, chromaSubsampling: '4:4:4' })
+    .toBuffer();
+}
 
 export const POST = withUser(async ({ user, request }) => {
   const { garmentId } = await request.json();
@@ -84,10 +99,11 @@ export const POST = withUser(async ({ user, request }) => {
       sourceMime = sourceResponse.headers.get('content-type') || sourceMime;
     }
 
+    const normalizedSource = await normalizeCatalogSource(sourceBuffer);
     const openai = getOpenAI();
     const generated = await openai.images.edit({
       model: CATALOG_MODEL,
-      image: await toFile(sourceBuffer, 'garment-reference.jpg', { type: sourceMime }),
+      image: await toFile(normalizedSource, 'garment-reference.jpg', { type: 'image/jpeg' }),
       prompt,
       size: CATALOG_SIZE,
       quality: CATALOG_QUALITY,
@@ -172,6 +188,14 @@ export const POST = withUser(async ({ user, request }) => {
     });
   } catch (catalogError: unknown) {
     const message = catalogError instanceof Error ? catalogError.message : 'Catalog generation failed.';
+    console.error('Catalog generation failed', {
+      jobId: job.id,
+      garmentId,
+      sourceId: source.id,
+      sourceBucket: source.bucket,
+      sourceMime: source.mime_type || 'image/jpeg',
+      message,
+    });
     await Promise.all([
       user.client.from('garments').update({ catalog_status: 'failed' }).eq('id', garmentId),
       user.client.from('processing_jobs').update({

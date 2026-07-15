@@ -10,15 +10,18 @@ type Props = {
   demoMode: boolean;
   onClose: () => void;
   onUpdated: (garment: Garment) => void;
+  onDeleted: (garmentId: string) => void;
 };
 
 const categories = ['Tops', 'Outerwear', 'Bottoms', 'Footwear', 'Accessories', 'Dresses'];
 const suggestedDetails = ['casual', 'minimal', 'everyday', 'layering'];
 
-export function GarmentDrawer({ garment, demoMode, onClose, onUpdated }: Props) {
+export function GarmentDrawer({ garment, demoMode, onClose, onUpdated, onDeleted }: Props) {
   const [draft, setDraft] = useState(garment);
   const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [catalogImageFailed, setCatalogImageFailed] = useState(false);
   const [message, setMessage] = useState('');
 
   useEffect(() => {
@@ -95,14 +98,43 @@ export function GarmentDrawer({ garment, demoMode, onClose, onUpdated }: Props) 
       onUpdated(updated);
       setMessage('Catalog image ready');
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Catalog generation failed.');
+      const message = error instanceof Error ? error.message : 'Catalog generation failed.';
+      const failed = { ...draft, catalog_status: 'failed' as const };
+      setDraft(failed);
+      onUpdated(failed);
+      setMessage(`${message} You can retry now.`);
     } finally {
       setGenerating(false);
     }
   };
 
+  const deleteGarment = async () => {
+    const label = draft.display_name || draft.sub_category || 'this garment';
+    if (!window.confirm(`Delete ${label}? This permanently removes its saved source and catalog images.`)) return;
+    if (demoMode) {
+      onDeleted(draft.id);
+      onClose();
+      return;
+    }
+    setDeleting(true);
+    setMessage('');
+    try {
+      const response = await fetch(`/api/items?id=${encodeURIComponent(draft.id)}`, { method: 'DELETE' });
+      const json = await response.json();
+      if (!response.ok) throw new Error(json.error || 'Could not delete this garment.');
+      onDeleted(draft.id);
+      onClose();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Could not delete this garment.');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const update = <K extends keyof Garment>(key: K, value: Garment[K]) => setDraft((current) => ({ ...current, [key]: value }));
-  const image = draft.catalog_asset_url || draft.primary_image_url;
+  const image = catalogImageFailed
+    ? draft.source_asset_url || draft.primary_image_url
+    : draft.catalog_asset_url || draft.source_asset_url || draft.primary_image_url;
   const details = Array.from(new Set([...(draft.style_detail?.split(',').map((tag) => tag.trim()).filter(Boolean) ?? []), ...suggestedDetails])).slice(0, 4);
 
   return (
@@ -112,7 +144,7 @@ export function GarmentDrawer({ garment, demoMode, onClose, onUpdated }: Props) 
         <header className="drawer-hero">
           <span className="drawer-kicker">{draft.category}</span>
           <button className="icon-button drawer-close" onClick={onClose} aria-label="Close"><CloseIcon /></button>
-          {image ? <Image src={image} alt={draft.display_name || draft.sub_category} width={900} height={900} unoptimized /> : <div className="image-placeholder" />}
+          {image ? <Image src={image} alt={draft.display_name || draft.sub_category} width={900} height={900} unoptimized onError={() => setCatalogImageFailed(true)} /> : <div className="image-placeholder" />}
           <span className={`asset-badge ${draft.catalog_status === 'ready' ? 'ready' : ''}`}>
             {draft.catalog_status === 'ready' ? 'AI catalog cutout' : 'Source crop'}
           </span>
@@ -152,6 +184,7 @@ export function GarmentDrawer({ garment, demoMode, onClose, onUpdated }: Props) 
 
           {message && <p className="drawer-message" role="status">{message}</p>}
           <footer className="drawer-actions">
+            <button className="button-danger" onClick={deleteGarment} disabled={deleting}>{deleting ? 'Deleting…' : 'Delete'}</button>
             <button className="button-secondary" onClick={onClose}>Cancel</button>
             <button className="button-primary" onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save garment'}</button>
           </footer>
