@@ -73,17 +73,8 @@ export function ImportPanel({ demoMode, onClose, onApproved }: Props) {
   const uploadAndAnalyze = async () => {
     if (!files.length) return;
     if (demoMode) {
-      setStage('scanning');
-      window.setTimeout(() => {
-        const samples: Detection[] = [
-          { id: 'demo-top', category: 'Tops', sub_category: 'Crewneck shirt', description: 'Cream graphic crewneck', confidence: 0.94, colors: [{ name: 'Cream', hex: '#e8e0cf' }] },
-          { id: 'demo-bottom', category: 'Bottoms', sub_category: 'Casual trousers', description: 'Relaxed stone trousers', confidence: 0.89, colors: [{ name: 'Stone', hex: '#b8ad99' }] },
-          { id: 'demo-shoe', category: 'Footwear', sub_category: 'Low-top sneakers', description: 'White leather sneakers', confidence: 0.82, colors: [{ name: 'White', hex: '#ebe9e1' }] },
-        ];
-        setDetections(samples);
-        setSelected(new Set(samples.map((item) => item.id)));
-        setStage('review');
-      }, 900);
+      setError('Photo analysis requires a signed-in Wardrobe Studio account. No garments were created.');
+      setStage('preview');
       return;
     }
     setStage('scanning');

@@ -35,10 +35,10 @@ export default function RootLayout({
             __html: `
               if ('serviceWorker' in navigator) {
                 window.addEventListener('load', function() {
-                  navigator.serviceWorker.register('/sw.js').then(function(reg) {
-                    console.log('ServiceWorker registration successful with scope: ', reg.scope);
+                  navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' }).then(function(reg) {
+                    reg.update();
                   }, function(err) {
-                    console.log('ServiceWorker registration failed: ', err);
+                    console.warn('Service worker registration failed:', err);
                   });
                 });
               }

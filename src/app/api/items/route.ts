@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { withUser } from '@/lib/api';
 import { fail, ok } from '@/lib/api';
+import { getLegacyWardrobeImagePath } from '@/lib/storage-path';
 
 /**
  * Explicit allowlist of columns a client is permitted to PATCH on a garment.
@@ -58,6 +59,22 @@ export const GET = withUser(async ({ user }) => {
 
   if (error) return fail(500, error.message);
 
+  const legacyPrimaryPaths = Array.from(new Set((items || []).flatMap((item: any) => {
+    const images = item.garment_images || [];
+    const primary = images.find((image: any) => image.is_primary_profile) || images[0];
+    const path = getLegacyWardrobeImagePath(primary?.storage_path);
+    return path ? [path] : [];
+  })));
+  const legacySignedUrls = new Map<string, string>();
+  if (legacyPrimaryPaths.length) {
+    const { data: signedRows } = await user.client.storage
+      .from('wardrobe-images')
+      .createSignedUrls(legacyPrimaryPaths, 60 * 60);
+    for (const row of signedRows || []) {
+      if (row.path && row.signedUrl) legacySignedUrls.set(row.path, row.signedUrl);
+    }
+  }
+
   const itemsWithImages = await Promise.all((items || []).map(async (item: any) => {
     const images = item.garment_images || [];
     const assets = item.garment_assets || [];
@@ -65,6 +82,8 @@ export const GET = withUser(async ({ user }) => {
       || assets.find((asset: any) => asset.kind === 'catalog_cutout');
     const sourceCrop = assets.find((asset: any) => asset.kind === 'source_crop');
     const primary = images.find((img: any) => img.is_primary_profile) || images[0];
+    const legacyPrimaryPath = getLegacyWardrobeImagePath(primary?.storage_path);
+    const legacyPrimaryUrl = legacyPrimaryPath ? legacySignedUrls.get(legacyPrimaryPath) || null : null;
     let assetUrl: string | null = null;
     const displayAsset = catalog || sourceCrop;
     if (displayAsset?.bucket && displayAsset?.storage_path) {
@@ -77,7 +96,7 @@ export const GET = withUser(async ({ user }) => {
       ...item,
       images,
       assets,
-      primary_image_url: assetUrl || (primary ? primary.storage_path : null),
+      primary_image_url: assetUrl || legacyPrimaryUrl || (legacyPrimaryPath ? null : primary?.storage_path || null),
       catalog_asset_url: catalog ? assetUrl : null,
     };
   }));
