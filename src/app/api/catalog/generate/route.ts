@@ -5,6 +5,7 @@ import { buildCatalogPrompt, CATALOG_MODEL, CATALOG_QUALITY, CATALOG_SIZE, choos
 import { getOpenAI } from '@/lib/ai/openai';
 import { removeChromaKey } from '@/lib/image/chroma';
 import { toStorageFile } from '@/lib/image/upload-body';
+import { getLegacyStorageLocation } from '@/lib/catalog-source';
 
 export const maxDuration = 300;
 
@@ -105,6 +106,13 @@ export const POST = withUser(async ({ user, request }) => {
     if (source.bucket) {
       const { data: blob, error: downloadError } = await user.client.storage
         .from(source.bucket).download(source.storage_path);
+      if (downloadError || !blob) throw downloadError || new Error('Could not read the source image.');
+      sourceBuffer = Buffer.from(await blob.arrayBuffer());
+      sourceMime = blob.type || sourceMime;
+    } else if (supabaseUrl && getLegacyStorageLocation(source.storage_path, supabaseUrl)) {
+      const location = getLegacyStorageLocation(source.storage_path, supabaseUrl)!;
+      const { data: blob, error: downloadError } = await user.client.storage
+        .from(location.bucket).download(location.path);
       if (downloadError || !blob) throw downloadError || new Error('Could not read the source image.');
       sourceBuffer = Buffer.from(await blob.arrayBuffer());
       sourceMime = blob.type || sourceMime;

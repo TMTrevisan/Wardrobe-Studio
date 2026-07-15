@@ -236,6 +236,12 @@ img { display: block; max-width: 100%; }
   .garment-drawer { width: min(680px, 62vw); }
 }
 
+/* Phones often report a layout viewport wider than 720px. Keep the closet
+   genuinely two-column across those mobile and narrow-tablet widths. */
+@media (max-width: 900px) {
+  .wardrobe-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 18px; row-gap: 34px; }
+}
+
 @media (max-width: 720px) {
   .studio-shell { padding-bottom: 88px; }
   .studio-header { height: 66px; padding: 0 18px; }
