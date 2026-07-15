@@ -12,6 +12,10 @@ The project is an additive evolution of Antigravity Threads. Existing garments, 
 
 This split keeps high-volume scanning fast while reserving the image model for the part that creates the product magic.
 
+## Project handoff
+
+The current architecture, deployed-state checklist, recent decisions, known issues, and next implementation milestones live in [docs/AGENT_HANDOFF.md](docs/AGENT_HANDOFF.md). Start there when picking up the project in a new agent session.
+
 ## Local setup
 
 ```bash
@@ -29,6 +33,8 @@ NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
 GEMINI_API_KEY=
 OPENAI_API_KEY=
+OPENAI_IMAGE_QUALITY=low
+OPENAI_CATALOG_IMAGE_SIZE=816x816
 NEXT_PUBLIC_GOOGLE_CLIENT_ID=
 ```
 

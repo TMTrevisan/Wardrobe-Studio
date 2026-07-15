@@ -1,11 +1,34 @@
 export const CATALOG_MODEL = process.env.OPENAI_IMAGE_MODEL || 'gpt-image-2';
 export type CatalogQuality = 'low' | 'medium' | 'high';
+export const DEFAULT_CATALOG_SIZE = '816x816';
+
+/**
+ * GPT Image 2 accepts dimensions in 16px increments, with at least 655,360
+ * pixels total. 816² is the smallest valid square canvas, which is ideal for
+ * the small catalog tiles while using fewer output tokens than 1024².
+ */
+export function getCatalogSize(value = process.env.OPENAI_CATALOG_IMAGE_SIZE): string {
+  if (!value || !/^\d+x\d+$/.test(value)) return DEFAULT_CATALOG_SIZE;
+
+  const [width, height] = value.split('x').map(Number);
+  const pixels = width * height;
+  const ratio = Math.max(width, height) / Math.min(width, height);
+  const valid = width <= 3840
+    && height <= 3840
+    && width % 16 === 0
+    && height % 16 === 0
+    && pixels >= 655_360
+    && pixels <= 8_294_400
+    && ratio <= 3;
+  return valid ? value : DEFAULT_CATALOG_SIZE;
+}
 
 export function getCatalogQuality(value = process.env.OPENAI_IMAGE_QUALITY): CatalogQuality {
-  return value === 'low' || value === 'high' ? value : 'medium';
+  return value === 'medium' || value === 'high' ? value : 'low';
 }
 
 export const CATALOG_QUALITY = getCatalogQuality();
+export const CATALOG_SIZE = getCatalogSize();
 
 const CHROMA_KEYS = ['#00FF00', '#FF00FF', '#00FFFF', '#0000FF', '#FFFF00'] as const;
 

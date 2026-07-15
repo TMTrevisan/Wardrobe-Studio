@@ -68,7 +68,7 @@ export function WardrobeStudio({ demoMode = false }: Props) {
       setBatchStatus('Every eligible piece already has a polished image.');
       return;
     }
-    if (!window.confirm(`Create ${eligible.length} polished catalog images? This runs one paid GPT Image request per piece at medium quality.`)) return;
+    if (!window.confirm(`Create ${eligible.length} polished catalog images? This runs one paid GPT Image request per piece at low quality.`)) return;
     setBatchStatus(`Creating 0 of ${eligible.length} images…`);
     const results = await runCatalogBatch(eligible.map((garment) => garment.id), async (garmentId) => {
       const response = await fetch('/api/catalog/generate', {

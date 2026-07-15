@@ -1,6 +1,6 @@
 import { toFile } from 'openai';
 import { withUser, fail, ok } from '@/lib/api';
-import { buildCatalogPrompt, CATALOG_MODEL, CATALOG_QUALITY, chooseChromaKey } from '@/lib/ai/catalog';
+import { buildCatalogPrompt, CATALOG_MODEL, CATALOG_QUALITY, CATALOG_SIZE, chooseChromaKey } from '@/lib/ai/catalog';
 import { getOpenAI } from '@/lib/ai/openai';
 import { removeChromaKey } from '@/lib/image/chroma';
 
@@ -59,7 +59,7 @@ export const POST = withUser(async ({ user, request }) => {
       status: 'running',
       progress: 10,
       model: CATALOG_MODEL,
-      input: { sourceImageId: source.id, chromaKey, quality: CATALOG_QUALITY },
+      input: { sourceImageId: source.id, chromaKey, quality: CATALOG_QUALITY, size: CATALOG_SIZE },
       started_at: new Date().toISOString(),
     })
     .select()
@@ -89,7 +89,7 @@ export const POST = withUser(async ({ user, request }) => {
       model: CATALOG_MODEL,
       image: await toFile(sourceBuffer, 'garment-reference.jpg', { type: sourceMime }),
       prompt,
-      size: '1024x1024',
+      size: CATALOG_SIZE,
       quality: CATALOG_QUALITY,
       background: 'opaque',
     });
