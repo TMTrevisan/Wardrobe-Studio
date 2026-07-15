@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: TypeScript
+        run: npx tsc --noEmit
+
+      - name: Tests
+        run: npm test
+
+      - name: Lint
+        run: npm run lint -- --max-warnings=0 || echo "lint warnings present (non-blocking)"
+
+      - name: Next.js build
+        run: npm run build
+
+      # `next build` already runs `tsc` + `eslint`, but the explicit steps
+      # above give clearer log sections when one of them fails.

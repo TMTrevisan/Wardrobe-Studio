@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+# Pre-push hook: blocks `git push` if the build is broken.
+# Install via: git config core.hooksPath .githooks
+#
+# This mirrors what Vercel will run (`npm run build`), so we catch
+# TypeScript / Next.js errors before they reach the deployment log.
+#
+# To skip on a one-off push: `git push --no-verify`
+
+set -euo pipefail
+
+RED=$'\033[0;31m'
+GREEN=$'\033[0;32m'
+YELLOW=$'\033[1;33m'
+RESET=$'\033[0m'
+
+echo "${YELLOW}▶ pre-push: running typecheck + tests + build...${RESET}"
+
+# 1. Fast: typecheck only (~5-10s).
+echo "${YELLOW}  • tsc --noEmit${RESET}"
+if ! npx tsc --noEmit; then
+  echo "${RED}✗ TypeScript failed. Push blocked.${RESET}"
+  echo "${YELLOW}  Fix the errors above, or run \`git push --no-verify\` to skip.${RESET}"
+  exit 1
+fi
+
+# 2. Tests (~5-10s).
+echo "${YELLOW}  • vitest run${RESET}"
+if ! npm test --silent; then
+  echo "${RED}✗ Tests failed. Push blocked.${RESET}"
+  echo "${YELLOW}  Fix the failing tests above, or run \`git push --no-verify\` to skip.${RESET}"
+  exit 1
+fi
+
+# 3. Full Next.js build (~30-60s on a warm cache).
+echo "${YELLOW}  • next build${RESET}"
+if ! npm run build; then
+  echo "${RED}✗ next build failed. Push blocked.${RESET}"
+  echo "${YELLOW}  Fix the errors above, or run \`git push --no-verify\` to skip.${RESET}"
+  exit 1
+fi
+
+echo "${GREEN}✓ Typecheck + tests + build passed. Pushing.${RESET}"
+exit 0
