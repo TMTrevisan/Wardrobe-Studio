@@ -36,6 +36,8 @@ The current Studio shell replaced rather than integrated many of these. That is 
 - The Studio currently marks only `source_crop` assets as eligible for catalog generation. Therefore legacy items such as the moccasins are incorrectly denied the Generate action even though they have usable primary images.
 - Current Studio color suggestion swatches are static UI values, not image-derived values. They must be removed/replaced.
 - New image pipeline has been verified end to end in production: source crop → GPT Image → chroma removal → ready 816×816 cutout.
+- **Data inventory verified 2026-07-15:** 119 garments, 230 legacy `garment_images`, 6 original import photos, 5 Studio source crops, 9 generated chroma images, and 9 final catalog cutouts. These assets remain in Supabase; the minimalist Studio drawer shows only one hero image and therefore hides most of this evidence.
+- A generated catalog image does not replace or delete its source image. It creates a `processing_jobs` record plus a `catalog_chroma` and `catalog_cutout` asset. Failed jobs also remain recorded for diagnosis.
 
 ## Immediate recovery backlog (P0)
 
@@ -57,6 +59,46 @@ The current Studio shell replaced rather than integrated many of these. That is 
 5. **Outfit flow**
    - Outfits opens a dedicated composition/selection state, not the generic grid followed by the garment editor.
    - Clicking a garment in outfit selection toggles inclusion; editing is an explicit secondary action.
+
+## Next implementation sequence (authoritative)
+
+### Release A — Asset gallery and generation provenance (do first)
+
+Goal: make existing data visible and controllable before creating more.
+
+1. Extend `GET /api/items` to sign and return every `garment_images` and `garment_assets` row, including asset kind, timestamps, generation prompt/model/quality, primary status, and safe source path metadata.
+2. Replace the drawer's single hero image with a horizontally scrollable, versioned gallery:
+   - **Originals**: existing front/back/detail/tag/fabric/size/brand photos;
+   - **Source crop**: the evidence image used for a Studio generation;
+   - **Generated background**: chroma image, useful for diagnosing masking;
+   - **Catalog cutouts**: every retained output, with a primary badge.
+3. Add explicit controls: choose primary display image, choose catalog-generation source, add image, label image role, delete a non-primary/non-last source with confirmation, and restore a prior catalog version.
+4. In the generation panel, show a compact progress timeline: `Source selected → normalized → GPT Image → background removed → QA → saved`. On failure show the exact failed stage and keep all prior assets available.
+5. Regenerate always creates a new version; never erase a previous successful image. New generation must show source image, model/quality/size, estimated cost, and confirmation.
+
+### Release B — Metadata repair and review workbench
+
+Goal: repair the existing closet rather than letting wrong suggestions accumulate.
+
+1. Add a per-garment **Re-analyze metadata** action that uses the selected garment crop or deliberate multi-photo evidence, not a full outfit photo.
+2. Add a bulk **Data review** queue: primary color, optional secondary/accent/print colors, brand, subcategory, material, tags, and confidence/evidence.
+3. Store color roles separately (`primary`, `secondary`, `accent`, coverage, source/evidence) rather than static palette suggestions. The user accepts changes individually or in a selected batch; no silent overwrites.
+4. Standardize display names as `Brand + Color + Subcategory`; new intake already starts using this only when a visible brand can be supported. Existing records require review, not automatic rewrite.
+
+### Release C — Outfit Composer (not another grid)
+
+Goal: reproduce and improve the original app's useful styling flow.
+
+1. **Brief:** user enters occasion, dress code, optional mood, location/temperature, and optionally turns on local weather.
+2. **Capsule:** system proposes a compact eligible set with category coverage and explains why each piece is included.
+3. **Options:** generate several outfit cards, with alternatives and filters; clicking a garment toggles it in the composer, while editing is a distinct action.
+4. **Persistence:** save outfits, log wear, surface weather/occasion rationale, and later render selected looks on the user's approved person reference.
+
+### Release D — Mobile-first multi-photo ingestion and wallet
+
+1. Direct-to-Supabase authenticated uploads for original-resolution phone/Google Photos assets; client compression is a temporary Vercel-body-limit mitigation.
+2. A single garment capture can contain front/back/detail/tag/fabric/size/brand shots, labelled with image roles and grouped before metadata extraction.
+3. Complete wallet: batch estimate, daily cap, ledger/history, source/model/quality, and explicit user approval before paid work.
 
 ## Core data model to implement (P1)
 
@@ -133,6 +175,7 @@ A feature is not complete because it builds or has a unit test. For any changed 
 ## Acceptance criteria for the next release
 
 - Moccasins and other legacy garments display all stored metadata and all source images.
+- A user can scroll every retained original and generated image, understand which was used for a generation, select another source, and safely remove a non-essential image.
 - They can generate a catalog image from an existing primary image.
 - User can select several incorrect garments and delete or reclassify them with one confirmation.
 - A white shirt’s primary color is white; optional print/accent colors are separately represented.

@@ -78,6 +78,11 @@ Use `medium` only for a manual regenerate of an important garment. Do not use `h
 
 ## Recent fixes and known behavior
 
+- **Asset visibility is the immediate next release:** production data verification found 119 garments, 230 legacy image records, 6 original import photos, 5 Studio source crops, and 9 each of chroma/cutout images. These are retained in Supabase but mostly invisible in the current Studio's one-image drawer. Read "Next implementation sequence" in `PRODUCT_BRIEF.md`; Release A must precede further large-scale generation.
+- **Catalog request contract verified against official docs 2026-07-15:** GPT Image 2 Image Edit returns `data[0].b64_json` by default. Do not send `response_format` to the deployed Image Edit endpoint; it returned `400 unknown parameter: response_format` in production.
+- **Mobile upload 413 verified in Vercel logs:** the Studio picker now client-compresses selected phone images before its server-proxied request and renders a clear non-JSON/413 error. Direct authenticated Storage uploads remain the required long-term mobile ingestion design.
+- **New intake display names:** new detection approvals now use `Brand + Color + Subcategory` when evidence supports a brand; brand is intentionally omitted when not visible. Existing names are not bulk-rewritten.
+
 - **Production pipeline verified 2026-07-15:** a supplied outfit photo completed upload → Gemini detection → approval → source crop → GPT Image → chroma removal → persisted catalog cutout. The verification result was HTTP 200, a signed catalog URL, `garment.catalog_status = ready`, `processing_jobs.status = succeeded`, and a valid 816×816 PNG with QA `passed`.
 - **Approval retries are idempotent:** `POST /api/detections/approve` now returns already-approved garments for the same selected detection IDs. It must not filter them out and respond “No garment crops could be created.”
 - **Storage binary rule:** Server-generated Sharp buffers must be uploaded as `File` objects via `toStorageFile` in `src/lib/image/upload-body.ts`. Passing a Node `Buffer` corrupted JPEG bytes; passing an ArrayBuffer stored the literal text `[object SharedArrayBuffer]`. The accompanying regression test verifies byte preservation. Use this helper for future server-generated image uploads.
