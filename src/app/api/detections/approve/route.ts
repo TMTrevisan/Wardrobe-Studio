@@ -20,14 +20,38 @@ export const POST = withUser(async ({ user, request }) => {
     .from('garment_detections')
     .select('*, source_assets(*)')
     .in('id', detectionIds)
-    .eq('user_id', user.id)
-    .eq('review_status', 'pending');
+    .eq('user_id', user.id);
   if (error) return fail(500, error.message);
+  if (!detections?.length) {
+    return fail(404, 'Those selected detections no longer exist. Return to the photo and run detection again.');
+  }
 
   const created: Array<Record<string, unknown>> = [];
   const skipped: Array<{ detectionId: string; reason: string }> = [];
   const sourceCache = new Map<string, { input: Buffer; width: number; height: number }>();
-  for (const detection of detections || []) {
+  for (const detection of detections) {
+    // Approval needs to be safe to retry. A prior request may have completed
+    // the crop/database work but lost its client response while a later
+    // catalog generation failed. Return that existing garment instead of
+    // filtering it out and falsely reporting that no crops could be created.
+    if (detection.review_status === 'approved' && detection.garment_id) {
+      const { data: existingGarment, error: existingError } = await user.client
+        .from('garments')
+        .select('*')
+        .eq('id', detection.garment_id)
+        .eq('user_id', user.id)
+        .maybeSingle();
+      if (existingGarment) {
+        created.push(existingGarment);
+        continue;
+      }
+      skipped.push({ detectionId: detection.id, reason: existingError?.message || 'The previously approved garment is missing.' });
+      continue;
+    }
+    if (detection.review_status !== 'pending') {
+      skipped.push({ detectionId: detection.id, reason: `This detection is ${detection.review_status} and cannot be approved.` });
+      continue;
+    }
     const source = detection.source_assets;
     if (!source?.id || !source.storage_path) {
       skipped.push({ detectionId: detection.id, reason: 'The source photo is missing.' });
@@ -127,5 +151,6 @@ export const POST = withUser(async ({ user, request }) => {
     console.error('Garment approval created no items', { userId: user.id, detectionIds, skipped });
     return fail(422, skipped[0]?.reason || 'No garment crops could be created.');
   }
-  return ok({ items: created, skipped });
+  const uniqueItems = Array.from(new Map(created.map((item) => [item.id as string, item])).values());
+  return ok({ items: uniqueItems, skipped });
 });
