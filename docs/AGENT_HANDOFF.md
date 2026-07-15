@@ -4,6 +4,8 @@ Last updated: 2026-07-15
 
 This is the durable context file for a new coding agent. Read it before changing the app. Do not rely on chat history for product decisions, credentials, or deployment state.
 
+**Read [PRODUCT_BRIEF.md](./PRODUCT_BRIEF.md) immediately after this file.** It is the authoritative product scope, recovery backlog, legacy-capability inventory, data-preservation contract, and acceptance criteria. This file is intentionally focused on technical environment and deployment context.
+
 ## Product in one sentence
 
 Wardrobe Studio turns a user's outfit photos (phone, local files, or Google Photos Picker) into an approved digital closet with source-grounded, clean catalog cutouts, then uses that closet for outfit planning and future try-on renders.

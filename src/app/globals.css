@@ -124,10 +124,18 @@ img { display: block; max-width: 100%; }
 .color-editor { display: grid; grid-template-columns: 48px 1fr auto; gap: 13px; align-items: end; margin-top: 15px; }
 .color-input { width: 48px; height: 48px; padding: 3px; border: 1px solid var(--line); background: transparent; }
 .color-editor code { padding-bottom: 15px; color: var(--muted); font-size: 11px; }
+.drawer-hint { margin: 13px 0 0; color: var(--muted); font-size: 10px; line-height: 1.45; }
 .swatch-row { display: flex; gap: 9px; margin-top: 15px; }
 .swatch-row button { width: 33px; height: 33px; border: 1px solid rgba(0,0,0,.14); }
 .tag-row { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 14px; }
-.tag-row span { padding: 9px 12px; border: 1px solid var(--line); font-size: 11px; }
+.tag-row span { display: inline-flex; align-items: center; gap: 8px; padding: 9px 10px 9px 12px; border: 1px solid var(--line); font-size: 11px; }
+.tag-row button { padding: 0; border: 0; background: transparent; font-size: 15px; line-height: 1; color: var(--muted); }
+.detail-adder { display: grid; grid-template-columns: 1fr 48px; gap: 8px; margin-top: 10px; }
+.detail-adder input, .notes-field textarea { width: 100%; border: 1px solid var(--line); background: transparent; padding: 11px 13px; font: inherit; font-size: 12px; }
+.detail-adder button { border: 1px solid var(--ink); background: transparent; font-size: 20px; }
+.notes-field { display: flex; flex-direction: column; gap: 8px; margin-top: 17px; }
+.notes-field > span { font-size: 9px; text-transform: uppercase; letter-spacing: .13em; color: var(--muted); }
+.notes-field textarea { min-height: 82px; resize: vertical; }
 .catalog-callout { margin-top: 25px; padding: 16px; display: flex; justify-content: space-between; gap: 15px; align-items: center; border: 1px solid var(--line); background: #eee7db; }
 .catalog-callout > div { display: flex; gap: 12px; align-items: center; }
 .catalog-callout svg { flex: 0 0 auto; width: 23px; }

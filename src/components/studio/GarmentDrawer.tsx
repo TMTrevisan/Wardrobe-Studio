@@ -13,9 +13,7 @@ type Props = {
   onDeleted: (garmentId: string) => void;
 };
 
-const categories = ['Tops', 'Outerwear', 'Bottoms', 'Footwear', 'Accessories', 'Dresses'];
-const suggestedDetails = ['casual', 'minimal', 'everyday', 'layering'];
-
+const categories = ['Tops', 'Outerwear', 'Tailoring', 'Bottoms', 'Footwear', 'Accessories', 'Dresses'];
 export function GarmentDrawer({ garment, demoMode, onClose, onUpdated, onDeleted }: Props) {
   const [draft, setDraft] = useState(garment);
   const [saving, setSaving] = useState(false);
@@ -51,17 +49,28 @@ export function GarmentDrawer({ garment, demoMode, onClose, onUpdated, onDeleted
           id: draft.id,
           display_name: draft.display_name,
           category: draft.category,
+          brand: draft.brand,
+          sub_category: draft.sub_category,
           color_family: draft.color_family,
           hex_code: draft.hex_code,
+          tonal_value: draft.tonal_value,
+          fabric_type: draft.fabric_type,
+          fit_block: draft.fit_block,
           style_detail: draft.style_detail,
           pattern: draft.pattern,
+          season: draft.season,
           formality: draft.formality,
+          size_label: draft.size_label,
+          price: draft.price,
+          purchase_year: draft.purchase_year,
+          status: draft.status,
+          notes: draft.notes,
         }),
       });
       const json = await response.json();
       if (!response.ok) throw new Error(json.error || 'Could not save this garment.');
       onUpdated({ ...draft, ...(json.data?.item ?? {}) });
-      setMessage('Changes saved');
+      onClose();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Could not save this garment.');
     } finally {
@@ -135,7 +144,15 @@ export function GarmentDrawer({ garment, demoMode, onClose, onUpdated, onDeleted
   const image = catalogImageFailed
     ? draft.source_asset_url || draft.primary_image_url
     : draft.catalog_asset_url || draft.source_asset_url || draft.primary_image_url;
-  const details = Array.from(new Set([...(draft.style_detail?.split(',').map((tag) => tag.trim()).filter(Boolean) ?? []), ...suggestedDetails])).slice(0, 4);
+  const details = Array.from(new Set(draft.style_detail?.split(',').map((tag) => tag.trim()).filter(Boolean) ?? []));
+  const [newDetail, setNewDetail] = useState('');
+  const addDetail = () => {
+    const tag = newDetail.trim();
+    if (!tag || details.some((detail) => detail.toLowerCase() === tag.toLowerCase())) return;
+    update('style_detail', [...details, tag].join(', '));
+    setNewDetail('');
+  };
+  const removeDetail = (detail: string) => update('style_detail', details.filter((tag) => tag !== detail).join(', ') || null);
 
   return (
     <div className="drawer-layer" role="dialog" aria-modal="true" aria-label={`Edit ${draft.display_name || draft.sub_category}`}>
@@ -154,6 +171,12 @@ export function GarmentDrawer({ garment, demoMode, onClose, onUpdated, onDeleted
           <div className="form-grid two">
             <label><span>Name</span><input value={draft.display_name || ''} onChange={(event) => update('display_name', event.target.value)} /></label>
             <label><span>Category</span><select value={draft.category} onChange={(event) => update('category', event.target.value)}>{categories.map((category) => <option key={category}>{category}</option>)}</select></label>
+            <label><span>Brand</span><input value={draft.brand || ''} onChange={(event) => update('brand', event.target.value || null)} /></label>
+            <label><span>Sub-category</span><input value={draft.sub_category || ''} onChange={(event) => update('sub_category', event.target.value)} /></label>
+            <label><span>Fabric</span><input value={draft.fabric_type || ''} onChange={(event) => update('fabric_type', event.target.value || null)} /></label>
+            <label><span>Fit</span><input value={draft.fit_block || ''} onChange={(event) => update('fit_block', event.target.value || null)} /></label>
+            <label><span>Size</span><input value={draft.size_label || ''} onChange={(event) => update('size_label', event.target.value || null)} /></label>
+            <label><span>Price</span><input type="number" min="0" step="0.01" value={draft.price ?? 0} onChange={(event) => update('price', Number(event.target.value) || 0)} /></label>
           </div>
 
           <section className="form-section">
@@ -163,18 +186,18 @@ export function GarmentDrawer({ garment, demoMode, onClose, onUpdated, onDeleted
               <label className="color-name"><span>Primary color</span><input value={draft.color_family || ''} onChange={(event) => update('color_family', event.target.value)} /></label>
               <code>{(draft.hex_code || '#c8bda9').toUpperCase()}</code>
             </div>
-            <div className="swatch-row" aria-label="Suggested colors">
-              {[draft.hex_code || '#c8bda9', '#ece6d8', '#9fa7b4', '#607a9f', '#8d6b4c'].map((color) => <button key={color} style={{ backgroundColor: color }} onClick={() => update('hex_code', color)} aria-label={`Use ${color}`} />)}
-            </div>
+            <p className="drawer-hint">Primary color should describe the garment itself. Accent/print color support is being restored separately; unrelated palette swatches have been removed.</p>
           </section>
 
           <section className="form-section">
             <p className="field-heading">Details</p>
-            <div className="tag-row">{details.map((detail) => <span key={detail}>{detail}</span>)}</div>
+            <div className="tag-row">{details.map((detail) => <span key={detail}>{detail}<button type="button" onClick={() => removeDetail(detail)} aria-label={`Remove ${detail}`}>×</button></span>)}</div>
+            <div className="detail-adder"><input value={newDetail} onChange={(event) => setNewDetail(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); addDetail(); } }} placeholder="Add a detail" /><button type="button" onClick={addDetail}>+</button></div>
             <div className="form-grid two compact">
               <label><span>Pattern</span><input value={draft.pattern || ''} onChange={(event) => update('pattern', event.target.value)} placeholder="Solid" /></label>
               <label><span>Dress code</span><input value={draft.formality || ''} onChange={(event) => update('formality', event.target.value)} placeholder="Casual" /></label>
             </div>
+            <label className="notes-field"><span>Notes</span><textarea value={draft.notes || ''} onChange={(event) => update('notes', event.target.value || null)} placeholder="Fit, care, purchase, or styling notes" /></label>
           </section>
 
           <div className="catalog-callout">

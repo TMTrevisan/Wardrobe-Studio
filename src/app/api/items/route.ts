@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { withUser } from '@/lib/api';
 import { fail, ok } from '@/lib/api';
 import { getLegacyWardrobeImagePath } from '@/lib/storage-path';
+import { hasCatalogSource } from '@/lib/catalog-source';
 
 /**
  * Explicit allowlist of columns a client is permitted to PATCH on a garment.
@@ -99,7 +100,10 @@ export const GET = withUser(async ({ user }) => {
       primary_image_url: catalogUrl || sourceCropUrl || legacyPrimaryUrl || (legacyPrimaryPath ? null : primary?.storage_path || null),
       catalog_asset_url: catalogUrl,
       source_asset_url: sourceCropUrl,
-      catalog_source_ready: Boolean(sourceCrop?.bucket && sourceCrop?.storage_path),
+      // Older garments retain their evidence in garment_images rather than
+      // Studio source_crop assets. A public legacy primary image is still a
+      // valid catalog reconstruction source and must not lose Generate.
+      catalog_source_ready: hasCatalogSource(sourceCrop, legacyPrimaryPath),
     };
   }));
 
