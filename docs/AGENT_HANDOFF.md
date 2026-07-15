@@ -76,6 +76,11 @@ Use `medium` only for a manual regenerate of an important garment. Do not use `h
 
 ## Recent fixes and known behavior
 
+- **Production pipeline verified 2026-07-15:** a supplied outfit photo completed upload → Gemini detection → approval → source crop → GPT Image → chroma removal → persisted catalog cutout. The verification result was HTTP 200, a signed catalog URL, `garment.catalog_status = ready`, `processing_jobs.status = succeeded`, and a valid 816×816 PNG with QA `passed`.
+- **Approval retries are idempotent:** `POST /api/detections/approve` now returns already-approved garments for the same selected detection IDs. It must not filter them out and respond “No garment crops could be created.”
+- **Storage binary rule:** Server-generated Sharp buffers must be uploaded as `File` objects via `toStorageFile` in `src/lib/image/upload-body.ts`. Passing a Node `Buffer` corrupted JPEG bytes; passing an ArrayBuffer stored the literal text `[object SharedArrayBuffer]`. The accompanying regression test verifies byte preservation. Use this helper for future server-generated image uploads.
+- **Catalog asset schema rule:** both catalog assets need non-null schema fields. `catalog_chroma` requires `is_primary: false` and `qa_json: {}`; `catalog_cutout` needs `is_primary: true` and actual QA metadata. Keep catalog route error stages explicit so database failures are not reported as generic model failures.
+- **Known intake limitation:** Vercel rejected one large re-encoded mobile photo with HTTP 413 before the app’s 25 MB validation. Replace the server-proxied import with direct-to-Supabase Storage signed uploads (or client-side resize/compression) before marketing full-resolution camera-roll ingestion.
 - Duplicate imports now return the existing import rather than creating a second import.
 - Reopening an analyzed import returns its existing detections rather than incorrectly saying no photos remain.
 - A GPT billing hard-limit/quota error is surfaced as a clear `402` response. It is not a source-image failure.
@@ -88,6 +93,12 @@ Recent production symptoms that need re-testing after each deploy:
 - Google Photos previously opened a blank screen; check Google Cloud authorized origins, Picker configuration, and browser console/network logs.
 - The Studio menu (three dots), item image display, and “Add to wardrobe” behavior were reported unreliable. Verify visually on production with a real signed-in user before considering the flow done.
 - Several early images were broken because old rows lacked retained source crops; new approval flow should save `source_crop` assets.
+
+Next product redesign work requested by the user (not yet implemented):
+
+- Restore a **multi-photo garment intake**: group front/back/detail/tag/fabric/size/brand shots under one garment, keep each provenance asset, and use the best front image as the catalog reconstruction source.
+- Add a mobile-first **sidebar/navigation** redesign.
+- Add generation estimates, an enforceable daily spending cap, and a durable generation ledger before enabling larger automatic batches.
 
 ## Required environment variables
 
