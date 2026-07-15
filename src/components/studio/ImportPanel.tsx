@@ -6,6 +6,7 @@ import { GooglePhotosButton } from './GooglePhotosButton';
 import { CheckIcon, CloseIcon, FolderIcon, ImageIcon, SparkleIcon, UploadIcon } from './StudioIcons';
 import { getDetectionPreviewLayout, type NormalizedBoundingBox } from '@/lib/image/detection-preview';
 import { runCatalogBatch, type CatalogBatchResult } from '@/lib/ai/catalog-batch';
+import { compressImage } from '@/lib/image';
 
 type Detection = {
   id: string;
@@ -24,6 +25,19 @@ type Detection = {
 type Props = { demoMode: boolean; onClose: () => void; onApproved: () => void };
 type CreatedGarment = { id: string; display_name?: string | null; sub_category?: string | null };
 type Stage = 'choose' | 'preview' | 'scanning' | 'review' | 'approving' | 'cataloging' | 'done';
+
+async function readApiPayload(response: Response): Promise<Record<string, any>> {
+  const text = await response.text();
+  try {
+    return text ? JSON.parse(text) : {};
+  } catch {
+    return {
+      error: response.status === 413
+        ? 'This photo is too large to upload. Choose it again and Wardrobe Studio will prepare a smaller copy.'
+        : `The server returned an unexpected ${response.status} response. Please try again.`,
+    };
+  }
+}
 
 export function ImportPanel({ demoMode, onClose, onApproved }: Props) {
   const [stage, setStage] = useState<Stage>('choose');
@@ -51,14 +65,27 @@ export function ImportPanel({ demoMode, onClose, onApproved }: Props) {
     return () => window.removeEventListener('keydown', closeOnEscape);
   }, [onClose]);
 
-  const chooseFiles = (list: FileList | null) => {
+  const chooseFiles = async (list: FileList | null) => {
     if (!list?.length) return;
     const chosen = Array.from(list).filter((file) => file.type.startsWith('image/')).slice(0, 60);
-    previews.forEach(URL.revokeObjectURL);
-    setFiles(chosen);
-    setPreviews(chosen.slice(0, 12).map(URL.createObjectURL));
-    setStage('preview');
-    setError('');
+    try {
+      const prepared = await Promise.all(chosen.map(async (file) => {
+        try {
+          return await compressImage(file);
+        } catch {
+          if (file.size <= 4 * 1024 * 1024) return file;
+          throw new Error(`Could not prepare ${file.name} for upload. Choose a JPEG, PNG, or WebP photo.`);
+        }
+      }));
+      previews.forEach(URL.revokeObjectURL);
+      setFiles(prepared);
+      setPreviews(prepared.slice(0, 12).map(URL.createObjectURL));
+      setStage('preview');
+      setError('');
+    } catch (prepareError) {
+      setError(prepareError instanceof Error ? prepareError.message : 'Could not prepare the selected photos.');
+      setStage('choose');
+    }
   };
 
   const analyzeImport = useCallback(async (importId: string) => {
@@ -68,7 +95,7 @@ export function ImportPanel({ demoMode, onClose, onApproved }: Props) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id: importId }),
     });
-    const json = await response.json();
+    const json = await readApiPayload(response);
     if (!response.ok) throw new Error(json.error || 'The photo scan failed.');
     const found: Detection[] = json.data?.detections ?? [];
     setDetections(found);
@@ -91,7 +118,7 @@ export function ImportPanel({ demoMode, onClose, onApproved }: Props) {
       form.set('name', `Photo import ${new Date().toLocaleDateString()}`);
       files.forEach((file) => form.append('photos', file));
       const response = await fetch('/api/imports', { method: 'POST', body: form });
-      const json = await response.json();
+      const json = await readApiPayload(response);
       if (!response.ok) throw new Error(json.error || 'Photos could not be uploaded.');
       await analyzeImport(json.data?.importId);
     } catch (uploadError) {
@@ -176,8 +203,8 @@ export function ImportPanel({ demoMode, onClose, onApproved }: Props) {
             <button className="source-option" onClick={() => folderRef.current?.click()}><span className="source-icon"><FolderIcon /></span><span><strong>Photo folder</strong><small>Scan a larger local camera-roll export</small></span><span className="source-arrow">→</span></button>
             <GooglePhotosButton onImported={googleImported} onError={googleError} />
           </div>
-          <input ref={fileRef} className="sr-only" type="file" accept="image/*" multiple onChange={(event) => chooseFiles(event.target.files)} />
-          <input ref={folderRef} className="sr-only" type="file" accept="image/*" multiple {...({ webkitdirectory: '' } as React.InputHTMLAttributes<HTMLInputElement>)} onChange={(event) => chooseFiles(event.target.files)} />
+          <input ref={fileRef} className="sr-only" type="file" accept="image/*" multiple onChange={(event) => void chooseFiles(event.target.files)} />
+          <input ref={folderRef} className="sr-only" type="file" accept="image/*" multiple {...({ webkitdirectory: '' } as React.InputHTMLAttributes<HTMLInputElement>)} onChange={(event) => void chooseFiles(event.target.files)} />
           <p className="privacy-note">Original photos stay private. Only approved garment crops enter your wardrobe.</p>
           {error && <p className="panel-error" role="alert">{error}</p>}
         </div>}

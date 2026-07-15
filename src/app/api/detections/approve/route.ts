@@ -3,6 +3,7 @@ import sharp from 'sharp';
 import { withUser, fail, ok } from '@/lib/api';
 import { getDetectionPixelCrop, type NormalizedBoundingBox } from '@/lib/image/detection-preview';
 import { toStorageFile } from '@/lib/image/upload-body';
+import { buildGarmentDisplayName } from '@/lib/garment-name';
 
 function tonalValue(hex?: string): 'Light' | 'Medium' | 'Dark' {
   if (!hex || !/^#[0-9a-f]{6}$/i.test(hex)) return 'Medium';
@@ -85,12 +86,20 @@ export const POST = withUser(async ({ user, request }) => {
     const colors = Array.isArray(detection.colors) ? detection.colors : [];
     const primaryColor = colors[0] || {};
     const material = detection.observed_details?.material || 'Unknown';
+    const brand = typeof detection.observed_details?.brand === 'string' && detection.observed_details.brand.trim()
+      ? detection.observed_details.brand.trim()
+      : null;
     const { data: garment, error: garmentError } = await user.client.from('garments').insert({
       user_id: user.id,
       category: detection.category,
       sub_category: detection.sub_category || detection.category,
-      display_name: detection.description || detection.sub_category,
-      brand: null,
+      display_name: buildGarmentDisplayName({
+        brand,
+        color: primaryColor.name,
+        subcategory: detection.sub_category,
+        fallback: detection.description,
+      }),
+      brand,
       color_family: primaryColor.name || 'Unknown',
       hex_code: /^#[0-9a-f]{6}$/i.test(primaryColor.hex || '') ? primaryColor.hex : null,
       tonal_value: tonalValue(primaryColor.hex),

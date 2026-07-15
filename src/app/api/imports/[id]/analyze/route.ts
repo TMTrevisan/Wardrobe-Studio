@@ -14,6 +14,7 @@ const analysisSchema = {
         properties: {
           category: { type: 'string', enum: ['Tops', 'Bottoms', 'Outerwear', 'Footwear', 'Tailoring', 'Accessories', 'Dresses'] },
           sub_category: { type: 'string' },
+          brand: { type: 'string' },
           description: { type: 'string' },
           primary_color: { type: 'string' },
           hex_code: { type: 'string' },
@@ -41,6 +42,7 @@ export const maxDuration = 300;
 type GeminiGarment = {
   category: string;
   sub_category: string;
+  brand?: string;
   description: string;
   primary_color: string;
   hex_code?: string;
@@ -116,7 +118,7 @@ export const POST = withUser(async ({ user, request }) => {
           { text: `Inventory every deliberately worn clothing item in this photo. Include visible layers,
 footwear, belts, ties, hats, and bags. Exclude skin, props, furniture, and uncertain fragments.
 Return normalized bounding boxes from 0 to 1. Describe only source-supported details.
-Do not treat two layers as one garment.` },
+Do not treat two layers as one garment. Identify a brand only when its logo, label, or distinctive mark is visibly readable; otherwise omit it.` },
         ],
         config: { responseMimeType: 'application/json', responseSchema: analysisSchema as never },
       });
@@ -130,7 +132,7 @@ Do not treat two layers as one garment.` },
         bbox: normalizeDetectionBoundingBox(garment.bbox),
         confidence: Math.max(0, Math.min(1, garment.confidence || 0.5)),
         colors: [{ name: garment.primary_color, hex: garment.hex_code }],
-        observed_details: { material: garment.material, details: garment.visible_details || [] },
+        observed_details: { brand: garment.brand, material: garment.material, details: garment.visible_details || [] },
         candidate_group_key: `${garment.category}:${garment.sub_category}:${garment.primary_color}`.toLowerCase(),
       }));
       if (rows.length) {

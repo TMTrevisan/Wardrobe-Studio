@@ -134,7 +134,6 @@ export const POST = withUser(async ({ user, request }) => {
       size: CATALOG_SIZE,
       quality: CATALOG_QUALITY,
       background: 'opaque',
-      response_format: 'b64_json',
     });
     const base64 = generated.data?.[0]?.b64_json;
     if (!base64) throw new Error('GPT Image returned no image data.');
