@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 
 declare global {
   interface Window {
@@ -26,7 +26,7 @@ type Props = {
 export function GooglePhotosButton({ onImported, onError }: Props) {
   const [ready, setReady] = useState(() => typeof window !== 'undefined' && Boolean(window.google?.accounts?.oauth2));
   const [busy, setBusy] = useState(false);
-  const popupRef = useRef<Window | null>(null);
+  const [pickerUrl, setPickerUrl] = useState('');
   const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
 
   useEffect(() => {
@@ -47,7 +47,7 @@ export function GooglePhotosButton({ onImported, onError }: Props) {
       return;
     }
     setBusy(true);
-    popupRef.current = window.open('', 'google-photos-picker', 'width=520,height=760');
+    setPickerUrl('');
     const tokenClient = window.google.accounts.oauth2.initTokenClient({
       client_id: clientId,
       scope: 'https://www.googleapis.com/auth/photospicker.mediaitems.readonly',
@@ -63,7 +63,9 @@ export function GooglePhotosButton({ onImported, onError }: Props) {
           const sessionJson = await sessionResponse.json();
           const session = sessionJson.data?.session;
           if (!sessionResponse.ok || !session?.id || !session?.pickerUri) throw new Error(sessionJson.error || 'Picker session failed.');
-          if (popupRef.current) popupRef.current.location.href = `${session.pickerUri}/autoclose`;
+          const destination = `${String(session.pickerUri).replace(/\/$/, '')}/autoclose`;
+          setPickerUrl(destination);
+          window.open(destination, 'google-photos-picker');
 
           const started = Date.now();
           while (Date.now() - started < 10 * 60 * 1000) {
@@ -82,9 +84,9 @@ export function GooglePhotosButton({ onImported, onError }: Props) {
           });
           const importedJson = await imported.json();
           if (!imported.ok) throw new Error(importedJson.error || 'Google Photos import failed.');
+          setPickerUrl('');
           onImported(importedJson.data);
         } catch (error: unknown) {
-          popupRef.current?.close();
           onError(error instanceof Error ? error.message : 'Google Photos could not be connected.');
         } finally {
           setBusy(false);
@@ -94,11 +96,12 @@ export function GooglePhotosButton({ onImported, onError }: Props) {
     tokenClient.requestAccessToken();
   };
 
-  return (
+  return <div className="google-source">
     <button className="source-option" type="button" onClick={startPicker} disabled={!ready || busy || !clientId}>
       <span className="source-icon google-mark">G</span>
-      <span><strong>Google Photos</strong><small>{clientId ? 'Choose outfit photos from your Pixel' : 'Add Google OAuth client ID'}</small></span>
+      <span><strong>Google Photos</strong><small>{busy ? 'Waiting for your Google Photos selection' : clientId ? 'Choose outfit photos from your Pixel' : 'Add Google OAuth client ID'}</small></span>
       <span className="source-arrow">→</span>
     </button>
-  );
+    {pickerUrl && <a className="google-picker-link" href={pickerUrl} target="_blank" rel="noopener noreferrer">Open the Google Photos picker</a>}
+  </div>;
 }

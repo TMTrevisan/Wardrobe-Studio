@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import sharp from 'sharp';
 import { withUser, fail, ok } from '@/lib/api';
+import { getDetectionPixelCrop, type NormalizedBoundingBox } from '@/lib/image/detection-preview';
 
 function tonalValue(hex?: string): 'Light' | 'Medium' | 'Dark' {
   if (!hex || !/^#[0-9a-f]{6}$/i.test(hex)) return 'Medium';
@@ -24,25 +25,37 @@ export const POST = withUser(async ({ user, request }) => {
   if (error) return fail(500, error.message);
 
   const created: Array<Record<string, unknown>> = [];
+  const skipped: Array<{ detectionId: string; reason: string }> = [];
+  const sourceCache = new Map<string, { input: Buffer; width: number; height: number }>();
   for (const detection of detections || []) {
     const source = detection.source_assets;
-    const { data: blob, error: downloadError } = await user.client.storage
-      .from(source.bucket || 'wardrobe-sources')
-      .download(source.storage_path);
-    if (downloadError || !blob) continue;
-
-    const input = Buffer.from(await blob.arrayBuffer());
-    const metadata = await sharp(input).rotate().metadata();
-    const width = metadata.width || 1;
-    const height = metadata.height || 1;
-    const bbox = detection.bbox || {};
-    const paddingX = (Number(bbox.right) - Number(bbox.left)) * 0.12;
-    const paddingY = (Number(bbox.bottom) - Number(bbox.top)) * 0.12;
-    const left = Math.max(0, Math.floor((Number(bbox.left) - paddingX) * width));
-    const top = Math.max(0, Math.floor((Number(bbox.top) - paddingY) * height));
-    const right = Math.min(width, Math.ceil((Number(bbox.right) + paddingX) * width));
-    const bottom = Math.min(height, Math.ceil((Number(bbox.bottom) + paddingY) * height));
-    if (right <= left || bottom <= top) continue;
+    if (!source?.id || !source.storage_path) {
+      skipped.push({ detectionId: detection.id, reason: 'The source photo is missing.' });
+      continue;
+    }
+    let cached = sourceCache.get(source.id);
+    if (!cached) {
+      const { data: blob, error: downloadError } = await user.client.storage
+        .from(source.bucket || 'wardrobe-sources')
+        .download(source.storage_path);
+      if (downloadError || !blob) {
+        skipped.push({ detectionId: detection.id, reason: 'The source photo could not be downloaded.' });
+        continue;
+      }
+      const input = Buffer.from(await blob.arrayBuffer());
+      const metadata = await sharp(input).rotate().metadata();
+      cached = { input, width: metadata.width || 1, height: metadata.height || 1 };
+      sourceCache.set(source.id, cached);
+    }
+    const cropRegion = getDetectionPixelCrop(
+      detection.bbox as NormalizedBoundingBox,
+      cached.width,
+      cached.height,
+    );
+    if (!cropRegion) {
+      skipped.push({ detectionId: detection.id, reason: 'The detected crop was invalid.' });
+      continue;
+    }
 
     const colors = Array.isArray(detection.colors) ? detection.colors : [];
     const primaryColor = colors[0] || {};
@@ -64,14 +77,13 @@ export const POST = withUser(async ({ user, request }) => {
       metadata_confidence: detection.confidence,
       ai_extracted_json: detection,
     }).select().single();
-    if (garmentError || !garment) continue;
+    if (garmentError || !garment) {
+      skipped.push({ detectionId: detection.id, reason: garmentError?.message || 'The garment record could not be created.' });
+      continue;
+    }
 
-    const crop = await sharp(input).rotate().extract({
-      left,
-      top,
-      width: right - left,
-      height: bottom - top,
-    }).resize(1400, 1400, { fit: 'contain', background: '#F5F0E8', withoutEnlargement: true })
+    const crop = await sharp(cached.input).rotate().extract(cropRegion)
+      .resize(1400, 1400, { fit: 'contain', background: '#F5F0E8', withoutEnlargement: true })
       .jpeg({ quality: 95 }).toBuffer();
     const cropPath = `${user.id}/${garment.id}/${randomUUID()}-source.jpg`;
     const { error: uploadError } = await user.client.storage.from('wardrobe-catalog').upload(cropPath, crop, {
@@ -80,11 +92,11 @@ export const POST = withUser(async ({ user, request }) => {
     });
     if (uploadError) {
       await user.client.from('garments').delete().eq('id', garment.id);
+      skipped.push({ detectionId: detection.id, reason: uploadError.message });
       continue;
     }
 
-    await Promise.all([
-      user.client.from('garment_assets').insert({
+    const { error: assetError } = await user.client.from('garment_assets').insert({
         user_id: user.id,
         garment_id: garment.id,
         source_asset_id: source.id,
@@ -96,14 +108,24 @@ export const POST = withUser(async ({ user, request }) => {
         height: 1400,
         is_primary: true,
         qa_status: 'pending',
-      }),
-      user.client.from('garment_detections').update({
+      });
+    const { error: detectionError } = assetError ? { error: null } : await user.client
+      .from('garment_detections').update({
         garment_id: garment.id,
         review_status: 'approved',
-      }).eq('id', detection.id),
-    ]);
+      }).eq('id', detection.id);
+    if (assetError || detectionError) {
+      await user.client.storage.from('wardrobe-catalog').remove([cropPath]);
+      await user.client.from('garments').delete().eq('id', garment.id);
+      skipped.push({ detectionId: detection.id, reason: assetError?.message || detectionError?.message || 'Approval could not be saved.' });
+      continue;
+    }
     created.push(garment);
   }
 
-  return ok({ items: created });
+  if (!created.length) {
+    console.error('Garment approval created no items', { userId: user.id, detectionIds, skipped });
+    return fail(422, skipped[0]?.reason || 'No garment crops could be created.');
+  }
+  return ok({ items: created, skipped });
 });

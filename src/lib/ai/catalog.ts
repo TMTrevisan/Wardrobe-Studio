@@ -1,4 +1,11 @@
 export const CATALOG_MODEL = process.env.OPENAI_IMAGE_MODEL || 'gpt-image-2';
+export type CatalogQuality = 'low' | 'medium' | 'high';
+
+export function getCatalogQuality(value = process.env.OPENAI_IMAGE_QUALITY): CatalogQuality {
+  return value === 'low' || value === 'high' ? value : 'medium';
+}
+
+export const CATALOG_QUALITY = getCatalogQuality();
 
 const CHROMA_KEYS = ['#00FF00', '#FF00FF', '#00FFFF', '#0000FF', '#FFFF00'] as const;
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getDetectionPreviewLayout } from './detection-preview';
+import { getDetectionPixelCrop, getDetectionPreviewLayout, normalizeDetectionBoundingBox } from './detection-preview';
 
 describe('getDetectionPreviewLayout', () => {
   it('positions a normalized crop inside the preview frame', () => {
@@ -30,5 +30,20 @@ describe('getDetectionPreviewLayout', () => {
     expect(layout.frame.height).toBeCloseTo(50.666, 2);
     expect(layout.image.left).toBe('0%');
     expect(layout.image.top).toBe('0%');
+  });
+});
+
+describe('Gemini bounding-box compatibility', () => {
+  it('normalizes native 0–1000 coordinates', () => {
+    expect(normalizeDetectionBoundingBox({ left: 272, top: 271, right: 498, bottom: 566 }))
+      .toEqual({ left: 0.272, top: 0.271, right: 0.498, bottom: 0.566 });
+  });
+
+  it('creates a valid padded crop from native coordinates', () => {
+    expect(getDetectionPixelCrop(
+      { left: 272, top: 271, right: 498, bottom: 566 },
+      1000,
+      1000,
+    )).toEqual({ left: 244, top: 235, width: 282, height: 367 });
   });
 });

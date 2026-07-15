@@ -1,6 +1,7 @@
 import { withUser, fail, ok } from '@/lib/api';
 import { GEMINI_VISION_MODEL, getGemini } from '@/lib/ai/gemini';
 import sharp from 'sharp';
+import { normalizeDetectionBoundingBox } from '@/lib/image/detection-preview';
 
 const analysisSchema = {
   type: 'object',
@@ -103,7 +104,7 @@ Do not treat two layers as one garment.` },
         category: garment.category,
         sub_category: garment.sub_category,
         description: garment.description,
-        bbox: garment.bbox,
+        bbox: normalizeDetectionBoundingBox(garment.bbox),
         confidence: Math.max(0, Math.min(1, garment.confidence || 0.5)),
         colors: [{ name: garment.primary_color, hex: garment.hex_code }],
         observed_details: { material: garment.material, details: garment.visible_details || [] },

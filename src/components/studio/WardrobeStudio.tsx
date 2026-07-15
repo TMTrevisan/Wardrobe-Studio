@@ -7,6 +7,7 @@ import { demoGarments } from '@/lib/demo-garments';
 import { GarmentDrawer } from './GarmentDrawer';
 import { ImportPanel } from './ImportPanel';
 import { MoreIcon, PlusIcon, SparkleIcon } from './StudioIcons';
+import { runCatalogBatch } from '@/lib/ai/catalog-batch';
 
 type Props = { demoMode?: boolean };
 type View = 'All' | 'Tops' | 'Jackets' | 'Bottoms' | 'Accessories' | 'Shoes' | 'Outfits';
@@ -30,6 +31,8 @@ export function WardrobeStudio({ demoMode = false }: Props) {
   const [importOpen, setImportOpen] = useState(false);
   const [loading, setLoading] = useState(!demoMode);
   const [error, setError] = useState('');
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [batchStatus, setBatchStatus] = useState('');
 
   const loadGarments = useCallback(async () => {
     if (demoMode) return;
@@ -58,12 +61,40 @@ export function WardrobeStudio({ demoMode = false }: Props) {
     setSelected(updated);
   };
 
+  const createCatalogBatch = async () => {
+    const eligible = garments.filter((garment) => garment.catalog_status !== 'ready' && Boolean(garment.primary_image_url)).slice(0, 20);
+    setMenuOpen(false);
+    if (!eligible.length) {
+      setBatchStatus('Every eligible piece already has a polished image.');
+      return;
+    }
+    if (!window.confirm(`Create ${eligible.length} polished catalog images? This runs one paid GPT Image request per piece at medium quality.`)) return;
+    setBatchStatus(`Creating 0 of ${eligible.length} images…`);
+    const results = await runCatalogBatch(eligible.map((garment) => garment.id), async (garmentId) => {
+      const response = await fetch('/api/catalog/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ garmentId }),
+      });
+      const json = await response.json();
+      if (!response.ok) throw new Error(json.error || 'Catalog generation failed.');
+    }, {
+      concurrency: 2,
+      onProgress: (completed, total) => setBatchStatus(`Creating ${completed} of ${total} images…`),
+    });
+    await loadGarments();
+    const ready = results.filter((result) => result.ok).length;
+    setBatchStatus(`${ready} of ${results.length} polished images created${ready < results.length ? '; failed pieces can be retried from this menu.' : '.'}`);
+  };
+
   return (
     <main className="studio-shell">
       <header className="studio-header">
         <div className="brand-lockup"><span className="brand-mark">W</span><div><strong>WARDROBE</strong><small>Studio</small></div></div>
-        <div className="header-meta"><span>{garments.length} pieces</span><button className="icon-button" aria-label="More options"><MoreIcon /></button></div>
+        <div className="header-meta"><span>{garments.length} pieces</span><div className="header-menu-wrap"><button className="icon-button" aria-label="More options" aria-expanded={menuOpen} onClick={() => setMenuOpen((open) => !open)}><MoreIcon /></button>{menuOpen && <div className="header-menu"><button onClick={() => { setMenuOpen(false); setImportOpen(true); }}>Import photos</button><button onClick={() => { setMenuOpen(false); void loadGarments(); }}>Refresh wardrobe</button><button onClick={() => void createCatalogBatch()}>Create next 20 images</button></div>}</div></div>
       </header>
+
+      {batchStatus && <div className="bulk-status" role="status">{batchStatus}<button onClick={() => setBatchStatus('')} aria-label="Dismiss">×</button></div>}
 
       <nav className="category-nav" aria-label="Wardrobe categories">
         {views.map((item) => <button key={item} className={view === item ? 'active' : ''} onClick={() => setView(item)}>{item}</button>)}

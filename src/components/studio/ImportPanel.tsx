@@ -23,7 +23,7 @@ type Detection = {
 
 type Props = { demoMode: boolean; onClose: () => void; onApproved: () => void };
 type CreatedGarment = { id: string; display_name?: string | null; sub_category?: string | null };
-type Stage = 'choose' | 'preview' | 'scanning' | 'review' | 'cataloging' | 'done';
+type Stage = 'choose' | 'preview' | 'scanning' | 'review' | 'approving' | 'cataloging' | 'done';
 
 export function ImportPanel({ demoMode, onClose, onApproved }: Props) {
   const [stage, setStage] = useState<Stage>('choose');
@@ -137,7 +137,7 @@ export function ImportPanel({ demoMode, onClose, onApproved }: Props) {
       onApproved();
       return;
     }
-    setStage('scanning');
+    setStage('approving');
     try {
       const response = await fetch('/api/detections/approve', {
         method: 'POST',
@@ -163,7 +163,7 @@ export function ImportPanel({ demoMode, onClose, onApproved }: Props) {
       <button className="drawer-scrim" onClick={onClose} aria-label="Close import" />
       <section className="import-panel">
         <header className="import-header">
-          <div><span className="eyebrow">Wardrobe intake</span><h2>{stage === 'review' ? 'We found these pieces' : stage === 'cataloging' ? 'Creating your catalog' : stage === 'done' ? 'Your wardrobe is growing' : 'Turn photos into a closet'}</h2></div>
+          <div><span className="eyebrow">Wardrobe intake</span><h2>{stage === 'review' ? 'We found these pieces' : stage === 'approving' ? 'Preparing your pieces' : stage === 'cataloging' ? 'Creating your catalog' : stage === 'done' ? 'Your wardrobe is growing' : 'Turn photos into a closet'}</h2></div>
           <button className="icon-button" onClick={onClose} aria-label="Close"><CloseIcon /></button>
         </header>
 
@@ -188,6 +188,8 @@ export function ImportPanel({ demoMode, onClose, onApproved }: Props) {
         </div>}
 
         {stage === 'scanning' && <div className="import-body scanning-stage"><div className="scanner-orbit"><SparkleIcon /></div><h3>Looking through your outfits</h3><p>Finding shirts, layers, pants, shoes, and accessories. This can take a minute for a large selection.</p><div className="scan-line"><span /></div></div>}
+
+        {stage === 'approving' && <div className="import-body approving-stage"><div className="scanner-orbit"><SparkleIcon /></div><h3>Preparing your pieces</h3><p>Cropping the garments you approved and adding them to your wardrobe. Polished image generation starts after this step.</p><div className="scan-line"><span /></div></div>}
 
         {stage === 'review' && <div className="import-body review-stage">
           <p className="review-copy">Select the pieces you actually own. We’ll crop each one and prepare it for a polished catalog image.</p>
