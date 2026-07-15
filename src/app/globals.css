@@ -35,8 +35,14 @@ img { display: block; max-width: 100%; }
 .header-menu { position: absolute; z-index: 50; top: calc(100% + 8px); right: 0; width: 210px; padding: 6px; border: 1px solid var(--line); background: #f8f3e9; box-shadow: 0 14px 34px rgba(0,0,0,.12); }
 .header-menu button { width: 100%; padding: 12px 11px; border: 0; background: transparent; text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: .08em; }
 .header-menu button:hover { background: var(--paper-deep); }
+.selection-toggle { border: 0; background: transparent; font-size: 10px; text-transform: uppercase; letter-spacing: .1em; color: var(--ink); }
 .bulk-status { margin: 16px 3.2vw 0; padding: 11px 14px; display: flex; justify-content: space-between; gap: 16px; align-items: center; border: 1px solid var(--line); background: var(--paper-deep); font-size: 11px; }
 .bulk-status button { border: 0; background: transparent; font-size: 18px; }
+.selection-toolbar { margin: 16px 3.2vw 0; padding: 12px 14px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border: 1px solid var(--ink); background: var(--white); font-size: 11px; }
+.selection-toolbar > div { display: flex; gap: 8px; flex-wrap: wrap; }
+.selection-toolbar button { min-height: 34px; padding: 0 11px; border: 1px solid var(--ink); background: var(--ink); color: white; font-size: 9px; text-transform: uppercase; letter-spacing: .08em; }
+.selection-toolbar button:last-child { background: transparent; color: var(--ink); }
+.selection-toolbar .selection-danger { border-color: #9d3f32; background: transparent; color: #9d3f32; }
 .icon-button { width: 42px; height: 42px; display: grid; place-items: center; padding: 0; border: 1px solid var(--line); background: rgba(255,255,255,.24); }
 .icon-button:hover { background: var(--white); }
 .icon-button svg { width: 20px; height: 20px; }
@@ -66,6 +72,10 @@ img { display: block; max-width: 100%; }
 .garment-image { position: relative; display: grid; place-items: center; width: 100%; aspect-ratio: .82; }
 .garment-image img { width: 100%; height: 100%; object-fit: contain; filter: drop-shadow(0 12px 10px rgba(39, 31, 24, .06)); transition: transform .35s cubic-bezier(.2,.7,.2,1); }
 .garment-tile:hover .garment-image img { transform: translateY(-5px) scale(1.025); }
+.garment-tile.selection-mode { position: relative; }
+.garment-tile.selection-mode.selected .garment-image { outline: 2px solid var(--ink); outline-offset: 5px; }
+.tile-selection { position: absolute; z-index: 2; top: 8px; left: 8px; display: grid; place-items: center; width: 24px; height: 24px; border: 1px solid var(--ink); border-radius: 50%; background: var(--paper); font-size: 13px; }
+.garment-tile.selection-mode.selected .tile-selection { background: var(--ink); color: white; }
 .catalog-dot { position: absolute; right: 2px; top: 2px; width: 7px; height: 7px; border-radius: 50%; background: #617858; box-shadow: 0 0 0 3px var(--paper); }
 .garment-label { display: flex; flex-direction: column; gap: 4px; margin-top: 13px; opacity: 0; transform: translateY(5px); transition: .2s ease; }
 .garment-tile:hover .garment-label, .garment-tile:focus-visible .garment-label { opacity: 1; transform: translateY(0); }
