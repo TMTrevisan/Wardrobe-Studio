@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import sharp from 'sharp';
 import { withUser, fail, ok } from '@/lib/api';
 import { getDetectionPixelCrop, type NormalizedBoundingBox } from '@/lib/image/detection-preview';
-import { toStorageArrayBuffer } from '@/lib/image/upload-body';
+import { toStorageFile } from '@/lib/image/upload-body';
 
 function tonalValue(hex?: string): 'Light' | 'Medium' | 'Dark' {
   if (!hex || !/^#[0-9a-f]{6}$/i.test(hex)) return 'Medium';
@@ -111,7 +111,7 @@ export const POST = withUser(async ({ user, request }) => {
       .resize(1400, 1400, { fit: 'contain', background: '#F5F0E8', withoutEnlargement: true })
       .jpeg({ quality: 95 }).toBuffer();
     const cropPath = `${user.id}/${garment.id}/${randomUUID()}-source.jpg`;
-    const { error: uploadError } = await user.client.storage.from('wardrobe-catalog').upload(cropPath, toStorageArrayBuffer(crop), {
+    const { error: uploadError } = await user.client.storage.from('wardrobe-catalog').upload(cropPath, toStorageFile(crop, 'source-crop.jpg', 'image/jpeg'), {
       contentType: 'image/jpeg',
       upsert: false,
     });

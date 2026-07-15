@@ -1,11 +1,8 @@
 /**
- * Supabase Storage accepts ArrayBuffer, but passing a Node Buffer through its
- * server runtime can coerce high-bit image bytes into UTF-8 replacement
- * characters. Slice the exact backing bytes so JPEG/PNG payloads stay binary.
+ * Supabase Storage's server transport reliably treats a web File as binary.
+ * Node Buffers and ArrayBuffers can otherwise be stringified by the storage
+ * client, corrupting high-bit JPEG/PNG bytes before they reach Storage.
  */
-export function toStorageArrayBuffer(buffer: Buffer): ArrayBuffer {
-  return buffer.buffer.slice(
-    buffer.byteOffset,
-    buffer.byteOffset + buffer.byteLength,
-  ) as ArrayBuffer;
+export function toStorageFile(buffer: Buffer, filename: string, contentType: string): File {
+  return new File([new Uint8Array(buffer)], filename, { type: contentType });
 }

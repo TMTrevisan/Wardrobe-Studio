@@ -4,7 +4,7 @@ import { withUser, fail, ok } from '@/lib/api';
 import { buildCatalogPrompt, CATALOG_MODEL, CATALOG_QUALITY, CATALOG_SIZE, chooseChromaKey } from '@/lib/ai/catalog';
 import { getOpenAI } from '@/lib/ai/openai';
 import { removeChromaKey } from '@/lib/image/chroma';
-import { toStorageArrayBuffer } from '@/lib/image/upload-body';
+import { toStorageFile } from '@/lib/image/upload-body';
 
 export const maxDuration = 300;
 
@@ -125,8 +125,8 @@ export const POST = withUser(async ({ user, request }) => {
     const cutoutPath = `${user.id}/${garmentId}/${stamp}-cutout.png`;
     const bucket = user.client.storage.from('wardrobe-catalog');
     const [chromaUpload, cutoutUpload] = await Promise.all([
-      bucket.upload(chromaPath, toStorageArrayBuffer(chromaPng), { contentType: 'image/png', upsert: false }),
-      bucket.upload(cutoutPath, toStorageArrayBuffer(cutout.png), { contentType: 'image/png', upsert: false }),
+      bucket.upload(chromaPath, toStorageFile(chromaPng, 'catalog-chroma.png', 'image/png'), { contentType: 'image/png', upsert: false }),
+      bucket.upload(cutoutPath, toStorageFile(cutout.png, 'catalog-cutout.png', 'image/png'), { contentType: 'image/png', upsert: false }),
     ]);
     if (chromaUpload.error) throw chromaUpload.error;
     if (cutoutUpload.error) throw cutoutUpload.error;
