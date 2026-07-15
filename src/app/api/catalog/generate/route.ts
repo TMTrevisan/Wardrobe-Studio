@@ -164,6 +164,7 @@ export const POST = withUser(async ({ user, request }) => {
         model: CATALOG_MODEL,
         is_primary: false,
         qa_status: 'pending',
+        qa_json: {},
       },
       {
         user_id: user.id,
