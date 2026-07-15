@@ -5,6 +5,7 @@ import Image from 'next/image';
 import { GooglePhotosButton } from './GooglePhotosButton';
 import { CheckIcon, CloseIcon, FolderIcon, ImageIcon, SparkleIcon, UploadIcon } from './StudioIcons';
 import { getDetectionPreviewLayout, type NormalizedBoundingBox } from '@/lib/image/detection-preview';
+import { runCatalogBatch, type CatalogBatchResult } from '@/lib/ai/catalog-batch';
 
 type Detection = {
   id: string;
@@ -21,7 +22,8 @@ type Detection = {
 };
 
 type Props = { demoMode: boolean; onClose: () => void; onApproved: () => void };
-type Stage = 'choose' | 'preview' | 'scanning' | 'review' | 'done';
+type CreatedGarment = { id: string; display_name?: string | null; sub_category?: string | null };
+type Stage = 'choose' | 'preview' | 'scanning' | 'review' | 'cataloging' | 'done';
 
 export function ImportPanel({ demoMode, onClose, onApproved }: Props) {
   const [stage, setStage] = useState<Stage>('choose');
@@ -29,6 +31,10 @@ export function ImportPanel({ demoMode, onClose, onApproved }: Props) {
   const [previews, setPreviews] = useState<string[]>([]);
   const [detections, setDetections] = useState<Detection[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [generateAfterApproval, setGenerateAfterApproval] = useState(true);
+  const [createdGarments, setCreatedGarments] = useState<CreatedGarment[]>([]);
+  const [batchResults, setBatchResults] = useState<CatalogBatchResult[]>([]);
+  const [batchProgress, setBatchProgress] = useState({ completed: 0, total: 0 });
   const [error, setError] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
   const folderRef = useRef<HTMLInputElement>(null);
@@ -102,6 +108,28 @@ export function ImportPanel({ demoMode, onClose, onApproved }: Props) {
     }
   }, [analyzeImport]);
 
+  const generateCatalogBatch = async (garments: CreatedGarment[]) => {
+    if (!garments.length) return;
+    setStage('cataloging');
+    setBatchResults([]);
+    setBatchProgress({ completed: 0, total: garments.length });
+    const results = await runCatalogBatch(garments.map((garment) => garment.id), async (garmentId) => {
+      const response = await fetch('/api/catalog/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ garmentId }),
+      });
+      const json = await response.json();
+      if (!response.ok) throw new Error(json.error || 'Catalog generation failed.');
+    }, {
+      concurrency: 2,
+      onProgress: (completed, total) => setBatchProgress({ completed, total }),
+    });
+    setBatchResults(results);
+    setStage('done');
+    onApproved();
+  };
+
   const approve = async () => {
     if (!selected.size) return;
     if (demoMode) {
@@ -118,8 +146,12 @@ export function ImportPanel({ demoMode, onClose, onApproved }: Props) {
       });
       const json = await response.json();
       if (!response.ok) throw new Error(json.error || 'Garments could not be created.');
-      setStage('done');
+      const created: CreatedGarment[] = json.data?.items ?? [];
+      if (!created.length) throw new Error('No garment crops could be created from the selected detections.');
+      setCreatedGarments(created);
       onApproved();
+      if (generateAfterApproval) await generateCatalogBatch(created);
+      else setStage('done');
     } catch (approveError) {
       setError(approveError instanceof Error ? approveError.message : 'Garments could not be created.');
       setStage('review');
@@ -131,7 +163,7 @@ export function ImportPanel({ demoMode, onClose, onApproved }: Props) {
       <button className="drawer-scrim" onClick={onClose} aria-label="Close import" />
       <section className="import-panel">
         <header className="import-header">
-          <div><span className="eyebrow">Wardrobe intake</span><h2>{stage === 'review' ? 'We found these pieces' : stage === 'done' ? 'Your wardrobe is growing' : 'Turn photos into a closet'}</h2></div>
+          <div><span className="eyebrow">Wardrobe intake</span><h2>{stage === 'review' ? 'We found these pieces' : stage === 'cataloging' ? 'Creating your catalog' : stage === 'done' ? 'Your wardrobe is growing' : 'Turn photos into a closet'}</h2></div>
           <button className="icon-button" onClick={onClose} aria-label="Close"><CloseIcon /></button>
         </header>
 
@@ -182,10 +214,22 @@ export function ImportPanel({ demoMode, onClose, onApproved }: Props) {
             </button>;
           })}</div>
           {error && <p className="panel-error" role="alert">{error}</p>}
-          <div className="review-actions"><span>{selected.size} selected</span><button className="button-primary" onClick={approve} disabled={!selected.size}>Add to wardrobe</button></div>
+          <label className="batch-choice">
+            <input type="checkbox" checked={generateAfterApproval} onChange={(event) => setGenerateAfterApproval(event.target.checked)} />
+            <span><strong>Create polished images now</strong><small>Runs one GPT Image generation for each approved garment.</small></span>
+          </label>
+          <div className="review-actions"><span>{selected.size} selected</span><button className="button-primary" onClick={approve} disabled={!selected.size}>{generateAfterApproval ? 'Add & create images' : 'Add to wardrobe'}</button></div>
         </div>}
 
-        {stage === 'done' && <div className="import-body done-stage"><span className="done-mark"><CheckIcon /></span><h3>Pieces added</h3><p>Your source crops are ready. Open any piece to generate its polished catalog version.</p><button className="button-primary" onClick={onClose}>See my wardrobe</button></div>}
+        {stage === 'cataloging' && <div className="import-body cataloging-stage">
+          <div className="scanner-orbit"><SparkleIcon /></div>
+          <h3>Reconstructing your clothes</h3>
+          <p>Creating clean, source-grounded catalog images. Keep this window open while the batch finishes.</p>
+          <strong>{batchProgress.completed} of {batchProgress.total}</strong>
+          <div className="batch-progress" aria-label={`${batchProgress.completed} of ${batchProgress.total} catalog images complete`}><span style={{ width: `${batchProgress.total ? (batchProgress.completed / batchProgress.total) * 100 : 0}%` }} /></div>
+        </div>}
+
+        {stage === 'done' && <div className="import-body done-stage"><span className="done-mark"><CheckIcon /></span><h3>Pieces added</h3><p>{batchResults.length ? `${batchResults.filter((result) => result.ok).length} of ${batchResults.length} polished catalog images are ready.` : `${createdGarments.length} source crop${createdGarments.length === 1 ? ' is' : 's are'} ready.`}</p>{batchResults.some((result) => !result.ok) && <button className="button-secondary" onClick={() => void generateCatalogBatch(createdGarments.filter((garment) => batchResults.some((result) => result.garmentId === garment.id && !result.ok)))}>Retry {batchResults.filter((result) => !result.ok).length} failed</button>}<button className="button-primary" onClick={onClose}>See my wardrobe</button></div>}
       </section>
     </div>
   );
