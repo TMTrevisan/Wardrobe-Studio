@@ -31,6 +31,15 @@ async function normalizeCatalogSource(input: Buffer): Promise<Buffer> {
     .toBuffer();
 }
 
+function errorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === 'string') return error;
+  if (error && typeof error === 'object' && 'message' in error && typeof error.message === 'string') {
+    return error.message;
+  }
+  return 'Catalog generation failed.';
+}
+
 export const POST = withUser(async ({ user, request }) => {
   const { garmentId } = await request.json();
   if (!garmentId) return fail(400, 'garmentId is required.');
@@ -84,6 +93,7 @@ export const POST = withUser(async ({ user, request }) => {
 
   await user.client.from('garments').update({ catalog_status: 'generating' }).eq('id', garmentId);
 
+  let stage = 'read source image';
   try {
     let sourceBuffer: Buffer;
     let sourceMime = source.mime_type || 'image/jpeg';
@@ -100,7 +110,9 @@ export const POST = withUser(async ({ user, request }) => {
       sourceMime = sourceResponse.headers.get('content-type') || sourceMime;
     }
 
+    stage = 'normalize source image';
     const normalizedSource = await normalizeCatalogSource(sourceBuffer);
+    stage = 'generate catalog image';
     const openai = getOpenAI();
     const generated = await openai.images.edit({
       model: CATALOG_MODEL,
@@ -113,6 +125,7 @@ export const POST = withUser(async ({ user, request }) => {
     const base64 = generated.data?.[0]?.b64_json;
     if (!base64) throw new Error('GPT Image returned no image data.');
 
+    stage = 'remove chroma background';
     await user.client.from('processing_jobs').update({ progress: 70 }).eq('id', job.id);
     const chromaPng = Buffer.from(base64, 'base64');
     const cutout = await removeChromaKey(chromaPng, chromaKey);
@@ -124,13 +137,15 @@ export const POST = withUser(async ({ user, request }) => {
     const chromaPath = `${user.id}/${garmentId}/${stamp}-chroma.png`;
     const cutoutPath = `${user.id}/${garmentId}/${stamp}-cutout.png`;
     const bucket = user.client.storage.from('wardrobe-catalog');
+    stage = 'upload catalog images';
     const [chromaUpload, cutoutUpload] = await Promise.all([
       bucket.upload(chromaPath, toStorageFile(chromaPng, 'catalog-chroma.png', 'image/png'), { contentType: 'image/png', upsert: false }),
       bucket.upload(cutoutPath, toStorageFile(cutout.png, 'catalog-cutout.png', 'image/png'), { contentType: 'image/png', upsert: false }),
     ]);
-    if (chromaUpload.error) throw chromaUpload.error;
-    if (cutoutUpload.error) throw cutoutUpload.error;
+    if (chromaUpload.error) throw new Error(`Catalog chroma upload failed: ${chromaUpload.error.message}`);
+    if (cutoutUpload.error) throw new Error(`Catalog cutout upload failed: ${cutoutUpload.error.message}`);
 
+    stage = 'save catalog assets';
     await user.client
       .from('garment_assets')
       .update({ is_primary: false })
@@ -168,8 +183,9 @@ export const POST = withUser(async ({ user, request }) => {
         },
       },
     ]);
-    if (assetError) throw assetError;
+    if (assetError) throw new Error(`Catalog asset record failed: ${assetError.message}`);
 
+    stage = 'finalize catalog job';
     const { data: signed } = await bucket.createSignedUrl(cutoutPath, 60 * 60);
     await Promise.all([
       user.client.from('garments').update({ catalog_status: qaStatus === 'passed' ? 'ready' : 'needs_review' }).eq('id', garmentId),
@@ -188,13 +204,14 @@ export const POST = withUser(async ({ user, request }) => {
       chromaKey,
     });
   } catch (catalogError: unknown) {
-    const message = catalogError instanceof Error ? catalogError.message : 'Catalog generation failed.';
+    const message = errorMessage(catalogError);
     console.error('Catalog generation failed', {
       jobId: job.id,
       garmentId,
       sourceId: source.id,
       sourceBucket: source.bucket,
       sourceMime: source.mime_type || 'image/jpeg',
+      stage,
       message,
     });
     await Promise.all([
