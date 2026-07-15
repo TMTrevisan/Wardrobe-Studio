@@ -62,7 +62,7 @@ export function WardrobeStudio({ demoMode = false }: Props) {
   };
 
   const createCatalogBatch = async () => {
-    const eligible = garments.filter((garment) => garment.catalog_status !== 'ready' && Boolean(garment.primary_image_url)).slice(0, 20);
+    const eligible = garments.filter((garment) => garment.catalog_status !== 'ready' && garment.catalog_source_ready).slice(0, 20);
     setMenuOpen(false);
     if (!eligible.length) {
       setBatchStatus('Every eligible piece already has a polished image.');

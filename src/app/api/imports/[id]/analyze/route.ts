@@ -61,15 +61,38 @@ export const POST = withUser(async ({ user, request }) => {
     .from('wardrobe_imports').select('*').eq('id', importId).eq('user_id', user.id).single();
   if (!importRow) return fail(404, 'Import not found.');
 
-  const { data: assets, error } = await user.client
+  const { data: allAssets, error } = await user.client
     .from('source_assets')
     .select('*')
     .eq('import_id', importId)
     .eq('user_id', user.id)
-    .in('status', ['uploaded', 'queued'])
     .limit(12);
   if (error) return fail(500, error.message);
-  if (!assets?.length) return fail(400, 'No unprocessed photos remain in this import.');
+  if (!allAssets?.length) return fail(400, 'This import has no photos. Choose a new photo to start an import.');
+  const assets = allAssets.filter((asset) => ['uploaded', 'queued'].includes(asset.status));
+  if (!assets.length) {
+    const { data: existing, error: detectionError } = await user.client
+      .from('garment_detections')
+      .select('*, source_assets(*)')
+      .eq('user_id', user.id)
+      .in('source_asset_id', allAssets.map((asset) => asset.id));
+    if (detectionError) return fail(500, detectionError.message);
+    const detections = await Promise.all((existing || []).map(async (detection) => {
+      const source = detection.source_assets;
+      const { data: signed } = source?.storage_path
+        ? await user.client.storage.from(source.bucket || 'wardrobe-sources').createSignedUrl(source.storage_path, 60 * 60)
+        : { data: null };
+      return {
+        ...detection,
+        source_preview_url: signed?.signedUrl || null,
+        source_width: source?.width || 1,
+        source_height: source?.height || 1,
+        source_filename: source?.original_filename || null,
+      };
+    }));
+    if (detections.length) return ok({ importId, detections, processedAssets: importRow.processed_assets || allAssets.length, reused: true });
+    return fail(400, 'This photo was imported already, but no detections are available yet. Choose a different photo.');
+  }
 
   await user.client.from('wardrobe_imports').update({ status: 'scanning' }).eq('id', importId);
   const gemini = getGemini();

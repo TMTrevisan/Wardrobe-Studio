@@ -130,6 +130,8 @@ export function ImportPanel({ demoMode, onClose, onApproved }: Props) {
     onApproved();
   };
 
+  const billingBlocked = batchResults.some((result) => /billing|quota/i.test(result.error || ''));
+
   const approve = async () => {
     if (!selected.size) return;
     if (demoMode) {
@@ -231,7 +233,7 @@ export function ImportPanel({ demoMode, onClose, onApproved }: Props) {
           <div className="batch-progress" aria-label={`${batchProgress.completed} of ${batchProgress.total} catalog images complete`}><span style={{ width: `${batchProgress.total ? (batchProgress.completed / batchProgress.total) * 100 : 0}%` }} /></div>
         </div>}
 
-        {stage === 'done' && <div className="import-body done-stage"><span className="done-mark"><CheckIcon /></span><h3>Pieces added</h3><p>{batchResults.length ? `${batchResults.filter((result) => result.ok).length} of ${batchResults.length} polished catalog images are ready.` : `${createdGarments.length} source crop${createdGarments.length === 1 ? ' is' : 's are'} ready.`}</p>{batchResults.some((result) => !result.ok) && <button className="button-secondary" onClick={() => void generateCatalogBatch(createdGarments.filter((garment) => batchResults.some((result) => result.garmentId === garment.id && !result.ok)))}>Retry {batchResults.filter((result) => !result.ok).length} failed</button>}<button className="button-primary" onClick={onClose}>See my wardrobe</button></div>}
+        {stage === 'done' && <div className="import-body done-stage"><span className="done-mark"><CheckIcon /></span><h3>Pieces added</h3><p>{billingBlocked ? 'Your source crops are saved. Catalog images are paused because the OpenAI API billing limit has been reached.' : batchResults.length ? `${batchResults.filter((result) => result.ok).length} of ${batchResults.length} polished catalog images are ready.` : `${createdGarments.length} source crop${createdGarments.length === 1 ? ' is' : 's are'} ready.`}</p>{batchResults.some((result) => !result.ok) && !billingBlocked && <button className="button-secondary" onClick={() => void generateCatalogBatch(createdGarments.filter((garment) => batchResults.some((result) => result.garmentId === garment.id && !result.ok)))}>Retry {batchResults.filter((result) => !result.ok).length} failed</button>}<button className="button-primary" onClick={onClose}>See my wardrobe</button></div>}
       </section>
     </div>
   );

@@ -57,6 +57,7 @@ export interface Garment {
   assets?: GarmentAsset[];
   primary_image_url: string | null;
   catalog_asset_url?: string | null;
+  catalog_source_ready?: boolean;
   notes: string | null;
   price: number;
   purchase_year: number | null;

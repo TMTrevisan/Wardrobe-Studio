@@ -98,6 +98,7 @@ export const GET = withUser(async ({ user }) => {
       assets,
       primary_image_url: assetUrl || legacyPrimaryUrl || (legacyPrimaryPath ? null : primary?.storage_path || null),
       catalog_asset_url: catalog ? assetUrl : null,
+      catalog_source_ready: Boolean(sourceCrop?.bucket && sourceCrop?.storage_path),
     };
   }));
 

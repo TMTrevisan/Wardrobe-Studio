@@ -71,6 +71,10 @@ export function GarmentDrawer({ garment, demoMode, onClose, onUpdated }: Props) 
       setMessage('Connect Supabase and OpenAI to generate a catalog cutout.');
       return;
     }
+    if (!draft.catalog_source_ready) {
+      setMessage('This garment has no retained source crop. Re-import a photo of it before creating a Studio catalog image.');
+      return;
+    }
     setGenerating(true);
     setMessage('Building a source-grounded catalog image…');
     try {
@@ -142,8 +146,8 @@ export function GarmentDrawer({ garment, demoMode, onClose, onUpdated }: Props) 
           </section>
 
           <div className="catalog-callout">
-            <div><SparkleIcon /><span><strong>Studio catalog image</strong><small>Reconstruct this exact item as a clean ecommerce cutout.</small></span></div>
-            <button onClick={generateCatalog} disabled={generating}>{generating ? 'Generating…' : draft.catalog_status === 'ready' ? 'Regenerate' : 'Generate'}</button>
+            <div><SparkleIcon /><span><strong>Studio catalog image</strong><small>{draft.catalog_source_ready ? 'Reconstruct this exact item as a clean ecommerce cutout.' : 'Re-import a source photo to enable reconstruction.'}</small></span></div>
+            <button onClick={generateCatalog} disabled={generating || !draft.catalog_source_ready}>{generating ? 'Generating…' : draft.catalog_status === 'ready' ? 'Regenerate' : 'Generate'}</button>
           </div>
 
           {message && <p className="drawer-message" role="status">{message}</p>}

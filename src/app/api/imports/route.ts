@@ -5,6 +5,8 @@ const MAX_FILES = 60;
 const MAX_FILE_BYTES = 25 * 1024 * 1024;
 const SAFE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif']);
 
+type PreparedFile = { file: File; bytes: Buffer; sha256: string };
+
 export const POST = withUser(async ({ user, request }) => {
   const formData = await request.formData();
   const source = String(formData.get('source') || 'device_picker');
@@ -15,6 +17,36 @@ export const POST = withUser(async ({ user, request }) => {
   if (files.length === 0) return fail(400, 'Choose at least one photo.');
   if (files.length > MAX_FILES) return fail(400, `Choose up to ${MAX_FILES} photos per import.`);
 
+  const prepared: PreparedFile[] = [];
+  const seenHashes = new Set<string>();
+  for (const file of files) {
+    if (!SAFE_TYPES.has(file.type)) return fail(400, `${file.name} is not a supported image.`);
+    if (file.size > MAX_FILE_BYTES) return fail(400, `${file.name} is larger than 25 MB.`);
+    const bytes = Buffer.from(await file.arrayBuffer());
+    const sha256 = createHash('sha256').update(bytes).digest('hex');
+    if (!seenHashes.has(sha256)) {
+      prepared.push({ file, bytes, sha256 });
+      seenHashes.add(sha256);
+    }
+  }
+
+  const { data: existingAssets, error: existingError } = await user.client
+    .from('source_assets')
+    .select('id, import_id, sha256')
+    .eq('user_id', user.id)
+    .in('sha256', prepared.map((item) => item.sha256));
+  if (existingError) return fail(500, existingError.message);
+  const existingByHash = new Map((existingAssets || []).map((asset) => [asset.sha256, asset]));
+  const newFiles = prepared.filter((item) => !existingByHash.has(item.sha256));
+
+  // Re-open the original review rather than creating an empty import when a
+  // user selects a photo that has already been uploaded.
+  if (!newFiles.length) {
+    const existing = existingAssets?.[0];
+    if (!existing) return fail(400, 'Choose at least one new photo.');
+    return ok({ importId: existing.import_id, duplicate: true, assets: [] });
+  }
+
   const { data: importRow, error: importError } = await user.client
     .from('wardrobe_imports')
     .insert({
@@ -22,19 +54,14 @@ export const POST = withUser(async ({ user, request }) => {
       source,
       name: String(formData.get('name') || `Photo import ${new Date().toLocaleDateString()}`),
       status: 'uploading',
-      total_assets: files.length,
+      total_assets: newFiles.length,
     })
     .select()
     .single();
   if (importError) return fail(500, `Create the Wardrobe Studio migration first: ${importError.message}`);
 
   const uploaded: Array<Record<string, unknown>> = [];
-  for (const file of files) {
-    if (!SAFE_TYPES.has(file.type)) return fail(400, `${file.name} is not a supported image.`);
-    if (file.size > MAX_FILE_BYTES) return fail(400, `${file.name} is larger than 25 MB.`);
-
-    const bytes = Buffer.from(await file.arrayBuffer());
-    const sha256 = createHash('sha256').update(bytes).digest('hex');
+  for (const { file, bytes, sha256 } of newFiles) {
     const extension = file.name.split('.').pop()?.toLowerCase() || 'jpg';
     const path = `${user.id}/${importRow.id}/${randomUUID()}.${extension}`;
     const { error: storageError } = await user.client.storage
@@ -55,10 +82,7 @@ export const POST = withUser(async ({ user, request }) => {
       })
       .select()
       .single();
-    if (assetError) {
-      if (assetError.code === '23505') continue;
-      return fail(500, assetError.message);
-    }
+    if (assetError) return fail(500, assetError.message);
     uploaded.push(asset);
   }
 

@@ -180,6 +180,9 @@ export const POST = withUser(async ({ user, request }) => {
         finished_at: new Date().toISOString(),
       }).eq('id', job.id),
     ]);
+    if (/billing hard limit|insufficient quota|billing.*limit/i.test(message)) {
+      return fail(402, 'OpenAI API billing limit reached. Add API credit or raise your usage limit, then retry this garment.');
+    }
     return fail(502, message);
   }
 });
