@@ -5,8 +5,20 @@
 
 create extension if not exists pgcrypto;
 
-alter type public.garment_category add value if not exists 'Accessories';
-alter type public.garment_category add value if not exists 'Dresses';
+-- Some existing Antigravity projects use a varchar category column while
+-- fresh local installs use the garment_category enum. Extend the enum only
+-- when it exists so the additive migration supports both live schemas.
+do $$
+begin
+  if exists (
+    select 1 from pg_type t
+    join pg_namespace n on n.oid = t.typnamespace
+    where n.nspname = 'public' and t.typname = 'garment_category'
+  ) then
+    execute 'alter type public.garment_category add value if not exists ''Accessories''';
+    execute 'alter type public.garment_category add value if not exists ''Dresses''';
+  end if;
+end $$;
 
 alter table public.garments
   add column if not exists display_name text,
@@ -186,6 +198,7 @@ create index if not exists garment_detections_review_idx on public.garment_detec
 create index if not exists garment_detections_source_idx on public.garment_detections(source_asset_id);
 create index if not exists garment_detections_garment_idx on public.garment_detections(garment_id) where garment_id is not null;
 create index if not exists garment_assets_garment_idx on public.garment_assets(garment_id, kind);
+create index if not exists garment_assets_user_idx on public.garment_assets(user_id);
 create index if not exists garment_assets_source_idx on public.garment_assets(source_asset_id) where source_asset_id is not null;
 create index if not exists processing_jobs_status_idx on public.processing_jobs(user_id, status, created_at);
 create index if not exists processing_jobs_import_idx on public.processing_jobs(import_id) where import_id is not null;
@@ -230,6 +243,13 @@ drop policy if exists "Allow public read saved_outfits" on public.saved_outfits;
 drop policy if exists "Allow public insert saved_outfits" on public.saved_outfits;
 drop policy if exists "Allow public delete saved_outfits" on public.saved_outfits;
 drop policy if exists "Allow public read/write access for user measurements" on public.user_measurements;
+drop policy if exists "Users can only delete their own garments" on public.garments;
+drop policy if exists "Users can only insert their own garments" on public.garments;
+drop policy if exists "Users can only select their own garments" on public.garments;
+drop policy if exists "Users can only update their own garments" on public.garments;
+drop policy if exists "Users can manage their own saved_outfits" on public.saved_outfits;
+drop policy if exists "Users can manage their own measurements" on public.user_measurements;
+drop policy if exists "Users can manage their own wear_logs" on public.wear_logs;
 
 -- Ownership policies. Recreate by name so this migration is repeatable in dev.
 drop policy if exists "wardrobe_imports_owner" on public.wardrobe_imports;
