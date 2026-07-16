@@ -147,31 +147,27 @@ export function GarmentDrawer({ garment, demoMode, onClose, onUpdated, onDeleted
     : draft.catalog_asset_url || draft.source_asset_url || draft.primary_image_url;
   const image = heroUrl ?? defaultHero;
 
-  // Group every evidence image and Studio asset by purpose. The gallery is
-  // additive: empty groups are hidden so the rail stays focused on what
-  // actually exists for this garment.
+  // One horizontal rail of every evidence image and Studio asset, sorted by
+  // purpose: originals, source crop, generated background, catalog cutouts.
+  // Each thumb carries a small kind chip so the rail stays compact while
+  // every provenance role is still distinguishable.
   const gallery = useMemo(() => {
     const allImages = (draft.images || []) as Array<any>;
     const allAssets = (draft.assets || []) as Array<any>;
     const originals = allImages
       .filter((img) => img?.url)
-      .map((img) => ({ id: img.id, url: img.url as string, label: img.is_primary_profile ? 'Primary' : (img.role || 'Original'), primary: !!img.is_primary_profile }));
+      .map((img) => ({ id: img.id, url: img.url as string, kind: 'Original', primary: !!img.is_primary_profile }));
     const sourceCrops = allAssets
       .filter((asset) => asset?.kind === 'source_crop' && asset?.url)
-      .map((asset) => ({ id: asset.id, url: asset.url as string, label: 'Source crop', primary: false }));
+      .map((asset) => ({ id: asset.id, url: asset.url as string, kind: 'Source', primary: false }));
     const chroma = allAssets
       .filter((asset) => asset?.kind === 'catalog_chroma' && asset?.url)
-      .map((asset) => ({ id: asset.id, url: asset.url as string, label: 'Generated background', primary: false }));
+      .map((asset) => ({ id: asset.id, url: asset.url as string, kind: 'Chroma', primary: false }));
     const cutouts = allAssets
       .filter((asset) => asset?.kind === 'catalog_cutout' && asset?.url)
       .sort((a, b) => Number(!!b.is_primary) - Number(!!a.is_primary))
-      .map((asset) => ({ id: asset.id, url: asset.url as string, label: asset.is_primary ? 'Primary catalog' : 'Catalog version', primary: !!asset.is_primary }));
-    return [
-      { key: 'originals', label: 'Originals', items: originals },
-      { key: 'source', label: 'Source crop', items: sourceCrops },
-      { key: 'chroma', label: 'Generated background', items: chroma },
-      { key: 'cutouts', label: 'Catalog cutouts', items: cutouts },
-    ].filter((group) => group.items.length > 0);
+      .map((asset) => ({ id: asset.id, url: asset.url as string, kind: 'Catalog', primary: !!asset.is_primary }));
+    return [...originals, ...sourceCrops, ...chroma, ...cutouts];
   }, [draft.images, draft.assets]);
 
   // Reset the selected hero when the underlying garment changes (drawer reuse).
@@ -204,29 +200,24 @@ export function GarmentDrawer({ garment, demoMode, onClose, onUpdated, onDeleted
 
         {gallery.length > 0 && (
           <section className="drawer-gallery" aria-label="All garment images and generated assets">
-            {gallery.map((group) => (
-              <div key={group.key} className="drawer-gallery-group">
-                <p className="drawer-gallery-label">{group.label}</p>
-                <div className="drawer-gallery-rail" role="listbox" aria-label={group.label}>
-                  {group.items.map((item) => {
-                    const isActive = image === item.url;
-                    return (
-                      <button
-                        key={item.id}
-                        type="button"
-                        className={`drawer-gallery-thumb${isActive ? ' active' : ''}${item.primary ? ' primary' : ''}`}
-                        onClick={() => setHeroUrl(item.url)}
-                        aria-label={`${group.label}: ${item.label}`}
-                        aria-pressed={isActive}
-                      >
-                        <Image src={item.url} alt="" width={120} height={120} unoptimized />
-                        <span>{item.primary ? '★ ' : ''}{item.label}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
+            <div className="drawer-gallery-rail" role="listbox" aria-label="Image gallery">
+              {gallery.map((item) => {
+                const isActive = image === item.url;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className={`drawer-gallery-thumb${isActive ? ' active' : ''}${item.primary ? ' primary' : ''} kind-${item.kind.toLowerCase()}`}
+                    onClick={() => setHeroUrl(item.url)}
+                    aria-label={`${item.kind} image`}
+                    aria-pressed={isActive}
+                  >
+                    <Image src={item.url} alt="" width={96} height={96} unoptimized />
+                    <span className="drawer-gallery-chip">{item.primary ? `★ ${item.kind}` : item.kind}</span>
+                  </button>
+                );
+              })}
+            </div>
           </section>
         )}
 
