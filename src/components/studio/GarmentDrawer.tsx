@@ -141,6 +141,34 @@ export function GarmentDrawer({ garment, demoMode, onClose, onUpdated, onDeleted
     }
   };
 
+  const setPrimaryImage = async (imageId: string) => {
+    if (demoMode) {
+      const optimistic = {
+        ...draft,
+        images: (draft.images || []).map((img: any) => ({ ...img, is_primary_profile: img.id === imageId })),
+      } as Garment;
+      setDraft(optimistic);
+      onUpdated(optimistic);
+      setMessage('Primary image set in preview mode');
+      return;
+    }
+    try {
+      const response = await fetch('/api/items/set-primary-image', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ garmentId: draft.id, imageId }),
+      });
+      const json = await response.json();
+      if (!response.ok) throw new Error(json.error || 'Could not set the primary image.');
+      const images = (json.data?.images as any[]) || (draft.images || []).map((img: any) => ({ ...img, is_primary_profile: img.id === imageId }));
+      const next = { ...draft, images } as Garment;
+      setDraft(next);
+      onUpdated(next);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Could not set the primary image.');
+    }
+  };
+
   const update = <K extends keyof Garment>(key: K, value: Garment[K]) => setDraft((current) => ({ ...current, [key]: value }));
   const defaultHero = catalogImageFailed
     ? draft.source_asset_url || draft.primary_image_url
@@ -213,7 +241,18 @@ export function GarmentDrawer({ garment, demoMode, onClose, onUpdated, onDeleted
                     aria-pressed={isActive}
                   >
                     <Image src={item.url} alt="" width={96} height={96} unoptimized />
-                    <span className="drawer-gallery-chip">{item.primary ? `★ ${item.kind}` : item.kind}</span>
+                    <span className="drawer-gallery-chip">{item.kind}</span>
+                    {item.kind === 'Original' && (
+                      <button
+                        type="button"
+                        className={`drawer-gallery-star${item.primary ? ' on' : ''}`}
+                        onClick={(event) => { event.stopPropagation(); void setPrimaryImage(item.id); }}
+                        aria-label={item.primary ? 'Primary image' : 'Make primary image'}
+                        aria-pressed={item.primary}
+                      >
+                        ★
+                      </button>
+                    )}
                   </button>
                 );
               })}

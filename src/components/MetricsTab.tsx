@@ -17,6 +17,7 @@ const SERVICE_LABELS: Record<string, string> = {
   Gemini_Stylist_Engine: '💡 Stylist Engine',
   Pirate_Weather_API: '🌤 Weather',
   Gemini_Search_Image: '🖼 Image Search',
+  OpenAI_Image_Edit: '✨ Catalog Image Edit',
 };
 
 /**

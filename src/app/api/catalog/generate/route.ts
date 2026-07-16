@@ -6,6 +6,7 @@ import { getOpenAI } from '@/lib/ai/openai';
 import { removeChromaKey } from '@/lib/image/chroma';
 import { toStorageFile } from '@/lib/image/upload-body';
 import { getLegacyStorageLocation } from '@/lib/catalog-source';
+import { logTelemetry } from '@/lib/telemetry';
 
 export const maxDuration = 300;
 
@@ -212,6 +213,21 @@ export const POST = withUser(async ({ user, request }) => {
       }).eq('id', job.id),
     ]);
 
+    await logTelemetry(
+      'OpenAI_Image_Edit',
+      0,
+      0,
+      {
+        imageEdit: { quality: CATALOG_QUALITY, size: CATALOG_SIZE },
+        model: CATALOG_MODEL,
+        jobId: job.id,
+        garmentId,
+        qaStatus,
+        outcome: 'succeeded',
+      },
+      { client: user.client, userId: user.id }
+    );
+
     return ok({
       jobId: job.id,
       url: signed?.signedUrl,
@@ -237,6 +253,25 @@ export const POST = withUser(async ({ user, request }) => {
         finished_at: new Date().toISOString(),
       }).eq('id', job.id),
     ]);
+
+    // Log a zero-cost row for failed calls so the spend ledger still reflects
+    // the attempt and any future billing quota can be cross-checked.
+    await logTelemetry(
+      'OpenAI_Image_Edit',
+      0,
+      0,
+      {
+        imageEdit: { quality: CATALOG_QUALITY, size: CATALOG_SIZE },
+        model: CATALOG_MODEL,
+        jobId: job.id,
+        garmentId,
+        outcome: 'failed',
+        stage,
+        error: message,
+      },
+      { client: user.client, userId: user.id }
+    );
+
     if (/billing hard limit|insufficient quota|billing.*limit/i.test(message)) {
       return fail(402, 'OpenAI API billing limit reached. Add API credit or raise your usage limit, then retry this garment.');
     }

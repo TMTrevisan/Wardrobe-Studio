@@ -128,6 +128,9 @@ img { display: block; max-width: 100%; }
 .drawer-gallery-thumb { all: unset; position: relative; flex: 0 0 78px; height: 78px; cursor: pointer; scroll-snap-align: start; }
 .drawer-gallery-thumb img { width: 78px; height: 78px; object-fit: cover; background: #d9d5ca; display: block; }
 .drawer-gallery-chip { position: absolute; left: 4px; bottom: 4px; padding: 2px 5px; font-size: 9px; letter-spacing: .08em; text-transform: uppercase; background: rgba(248,243,233,.85); color: var(--ink); }
+.drawer-gallery-star { all: unset; position: absolute; top: 4px; right: 4px; width: 22px; height: 22px; display: grid; place-items: center; cursor: pointer; background: rgba(248,243,233,.85); color: var(--muted); font-size: 13px; line-height: 1; }
+.drawer-gallery-star:hover { color: var(--ink); }
+.drawer-gallery-star.on { color: #617858; }
 .drawer-gallery-thumb.active img { outline: 2px solid var(--ink); outline-offset: -2px; }
 .drawer-gallery-thumb.primary img { outline: 2px solid #617858; outline-offset: -2px; }
 .form-grid { display: grid; gap: 16px; }
