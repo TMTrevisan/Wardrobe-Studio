@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Image from 'next/image';
 import type { Garment } from '@/types/db';
 import { CloseIcon, SparkleIcon } from './StudioIcons';
@@ -14,6 +14,17 @@ type Props = {
 };
 
 const categories = ['Tops', 'Outerwear', 'Tailoring', 'Bottoms', 'Footwear', 'Accessories', 'Dresses'];
+
+// Keep aligned with PIPELINE_STAGES in src/app/api/catalog/generate/route.ts.
+const PIPELINE_STEPS: Array<{ id: string; label: string }> = [
+  { id: 'source_selected', label: 'Source selected' },
+  { id: 'source_normalized', label: 'Normalized' },
+  { id: 'gpt_image', label: 'GPT Image' },
+  { id: 'background_removed', label: 'Background removed' },
+  { id: 'qa', label: 'QA' },
+  { id: 'saved', label: 'Saved' },
+];
+
 export function GarmentDrawer({ garment, demoMode, onClose, onUpdated, onDeleted }: Props) {
   const [draft, setDraft] = useState(garment);
   const [saving, setSaving] = useState(false);
@@ -21,6 +32,9 @@ export function GarmentDrawer({ garment, demoMode, onClose, onUpdated, onDeleted
   const [deleting, setDeleting] = useState(false);
   const [catalogImageFailed, setCatalogImageFailed] = useState(false);
   const [message, setMessage] = useState('');
+  const [heroUrl, setHeroUrl] = useState<string | null>(null);
+  const [pipelineStage, setPipelineStage] = useState<string | null>(null);
+  const [pipelineFailed, setPipelineFailed] = useState<string | null>(null);
 
   useEffect(() => {
     const previous = document.body.style.overflow;
@@ -88,6 +102,8 @@ export function GarmentDrawer({ garment, demoMode, onClose, onUpdated, onDeleted
       return;
     }
     setGenerating(true);
+    setPipelineStage('source_selected');
+    setPipelineFailed(null);
     setMessage('Building a source-grounded catalog image…');
     try {
       const response = await fetch('/api/catalog/generate', {
@@ -96,7 +112,11 @@ export function GarmentDrawer({ garment, demoMode, onClose, onUpdated, onDeleted
         body: JSON.stringify({ garmentId: draft.id }),
       });
       const json = await response.json();
-      if (!response.ok) throw new Error(json.error || 'Catalog generation failed.');
+      if (!response.ok) {
+        const failedStage = (json?.stage as string | undefined) || pipelineStage;
+        setPipelineFailed(failedStage);
+        throw new Error(json.error || 'Catalog generation failed.');
+      }
       const updated = {
         ...draft,
         catalog_status: 'ready' as const,
@@ -105,12 +125,15 @@ export function GarmentDrawer({ garment, demoMode, onClose, onUpdated, onDeleted
       };
       setDraft(updated);
       onUpdated(updated);
+      const finalStage = (json.data?.stage as string | undefined) || 'saved';
+      setPipelineStage(finalStage);
       setMessage('Catalog image ready');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Catalog generation failed.';
       const failed = { ...draft, catalog_status: 'failed' as const };
       setDraft(failed);
       onUpdated(failed);
+      if (!pipelineFailed) setPipelineFailed(pipelineStage);
       setMessage(`${message} You can retry now.`);
     } finally {
       setGenerating(false);
@@ -140,10 +163,70 @@ export function GarmentDrawer({ garment, demoMode, onClose, onUpdated, onDeleted
     }
   };
 
+  const setPrimaryImage = async (imageId: string) => {
+    if (demoMode) {
+      const optimistic = {
+        ...draft,
+        images: (draft.images || []).map((img: any) => ({ ...img, is_primary_profile: img.id === imageId })),
+      } as Garment;
+      setDraft(optimistic);
+      onUpdated(optimistic);
+      setMessage('Primary image set in preview mode');
+      return;
+    }
+    try {
+      const response = await fetch('/api/items/set-primary-image', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ garmentId: draft.id, imageId }),
+      });
+      const json = await response.json();
+      if (!response.ok) throw new Error(json.error || 'Could not set the primary image.');
+      const images = (json.data?.images as any[]) || (draft.images || []).map((img: any) => ({ ...img, is_primary_profile: img.id === imageId }));
+      const next = { ...draft, images } as Garment;
+      setDraft(next);
+      onUpdated(next);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Could not set the primary image.');
+    }
+  };
+
   const update = <K extends keyof Garment>(key: K, value: Garment[K]) => setDraft((current) => ({ ...current, [key]: value }));
-  const image = catalogImageFailed
+  const defaultHero = catalogImageFailed
     ? draft.source_asset_url || draft.primary_image_url
     : draft.catalog_asset_url || draft.source_asset_url || draft.primary_image_url;
+  const image = heroUrl ?? defaultHero;
+
+  // One horizontal rail of every evidence image and Studio asset, sorted by
+  // purpose: originals, source crop, generated background, catalog cutouts.
+  // Each thumb carries a small kind chip so the rail stays compact while
+  // every provenance role is still distinguishable.
+  const gallery = useMemo(() => {
+    const allImages = (draft.images || []) as Array<any>;
+    const allAssets = (draft.assets || []) as Array<any>;
+    const originals = allImages
+      .filter((img) => img?.url)
+      .map((img) => ({ id: img.id, url: img.url as string, kind: 'Original', primary: !!img.is_primary_profile }));
+    const sourceCrops = allAssets
+      .filter((asset) => asset?.kind === 'source_crop' && asset?.url)
+      .map((asset) => ({ id: asset.id, url: asset.url as string, kind: 'Source', primary: false }));
+    const chroma = allAssets
+      .filter((asset) => asset?.kind === 'catalog_chroma' && asset?.url)
+      .map((asset) => ({ id: asset.id, url: asset.url as string, kind: 'Chroma', primary: false }));
+    const cutouts = allAssets
+      .filter((asset) => asset?.kind === 'catalog_cutout' && asset?.url)
+      .sort((a, b) => Number(!!b.is_primary) - Number(!!a.is_primary))
+      .map((asset) => ({ id: asset.id, url: asset.url as string, kind: 'Catalog', primary: !!asset.is_primary }));
+    return [...originals, ...sourceCrops, ...chroma, ...cutouts];
+  }, [draft.images, draft.assets]);
+
+  // Reset the selected hero when the underlying garment changes (drawer reuse).
+  useEffect(() => {
+    setHeroUrl(null);
+    setPipelineStage(null);
+    setPipelineFailed(null);
+  }, [draft.id]);
+
   const details = Array.from(new Set(draft.style_detail?.split(',').map((tag) => tag.trim()).filter(Boolean) ?? []));
   const [newDetail, setNewDetail] = useState('');
   const addDetail = () => {
@@ -166,6 +249,40 @@ export function GarmentDrawer({ garment, demoMode, onClose, onUpdated, onDeleted
             {draft.catalog_status === 'ready' ? 'AI catalog cutout' : 'Source crop'}
           </span>
         </header>
+
+        {gallery.length > 0 && (
+          <section className="drawer-gallery" aria-label="All garment images and generated assets">
+            <div className="drawer-gallery-rail" role="listbox" aria-label="Image gallery">
+              {gallery.map((item) => {
+                const isActive = image === item.url;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className={`drawer-gallery-thumb${isActive ? ' active' : ''}${item.primary ? ' primary' : ''} kind-${item.kind.toLowerCase()}`}
+                    onClick={() => setHeroUrl(item.url)}
+                    aria-label={`${item.kind} image`}
+                    aria-pressed={isActive}
+                  >
+                    <Image src={item.url} alt="" width={96} height={96} unoptimized />
+                    <span className="drawer-gallery-chip">{item.kind}</span>
+                    {item.kind === 'Original' && (
+                      <button
+                        type="button"
+                        className={`drawer-gallery-star${item.primary ? ' on' : ''}`}
+                        onClick={(event) => { event.stopPropagation(); void setPrimaryImage(item.id); }}
+                        aria-label={item.primary ? 'Primary image' : 'Make primary image'}
+                        aria-pressed={item.primary}
+                      >
+                        ★
+                      </button>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        )}
 
         <div className="drawer-form">
           <div className="form-grid two">
@@ -204,6 +321,26 @@ export function GarmentDrawer({ garment, demoMode, onClose, onUpdated, onDeleted
             <div><SparkleIcon /><span><strong>Studio catalog image</strong><small>{draft.catalog_source_ready ? 'Reconstruct this exact item as a clean ecommerce cutout.' : 'Re-import a source photo to enable reconstruction.'}</small></span></div>
             <button onClick={generateCatalog} disabled={generating || !draft.catalog_source_ready}>{generating ? 'Generating…' : draft.catalog_status === 'ready' ? 'Regenerate' : 'Generate'}</button>
           </div>
+
+          {(generating || pipelineStage || pipelineFailed) && (
+            <ol className="pipeline-stepper" aria-label="Catalog generation progress">
+              {PIPELINE_STEPS.map((step, index) => {
+                const stageIndex = PIPELINE_STEPS.findIndex((s) => s.id === pipelineStage);
+                const failedIndex = PIPELINE_STEPS.findIndex((s) => s.id === pipelineFailed);
+                const status: 'done' | 'current' | 'failed' | 'pending' =
+                  pipelineFailed && index === failedIndex ? 'failed'
+                  : !pipelineFailed && index === stageIndex ? 'current'
+                  : index < (failedIndex >= 0 ? failedIndex : stageIndex >= 0 ? stageIndex : PIPELINE_STEPS.length) ? 'done'
+                  : 'pending';
+                return (
+                  <li key={step.id} className={`pipeline-step pipeline-step-${status}`} aria-current={status === 'current' ? 'step' : undefined}>
+                    <span className="pipeline-step-marker">{status === 'done' ? '✓' : status === 'failed' ? '!' : index + 1}</span>
+                    <span className="pipeline-step-label">{step.label}</span>
+                  </li>
+                );
+              })}
+            </ol>
+          )}
 
           {message && <p className="drawer-message" role="status">{message}</p>}
           <footer className="drawer-actions">
