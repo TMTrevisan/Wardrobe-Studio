@@ -133,6 +133,16 @@ img { display: block; max-width: 100%; }
 .drawer-gallery-star.on { color: #617858; }
 .drawer-gallery-thumb.active img { outline: 2px solid var(--ink); outline-offset: -2px; }
 .drawer-gallery-thumb.primary img { outline: 2px solid #617858; outline-offset: -2px; }
+.pipeline-stepper { all: unset; list-style: none; display: flex; gap: 8px; padding: 8px 0 4px; overflow-x: auto; }
+.pipeline-step { all: unset; display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border: 1px solid var(--border); background: var(--surface, #f8f3e9); font-size: 11px; letter-spacing: .04em; white-space: nowrap; }
+.pipeline-step-marker { display: inline-grid; place-items: center; width: 18px; height: 18px; font-size: 10px; font-weight: 700; background: rgba(0,0,0,.06); }
+.pipeline-step-done { color: var(--ink); }
+.pipeline-step-done .pipeline-step-marker { background: #617858; color: #fff; }
+.pipeline-step-current { border-color: var(--ink); font-weight: 600; }
+.pipeline-step-current .pipeline-step-marker { background: var(--ink); color: #f8f3e9; }
+.pipeline-step-failed { border-color: #b03a3a; color: #b03a3a; }
+.pipeline-step-failed .pipeline-step-marker { background: #b03a3a; color: #fff; }
+.pipeline-step-pending { color: var(--muted); }
 .form-grid { display: grid; gap: 16px; }
 .form-grid.two { grid-template-columns: 1fr 1fr; }
 .form-grid.compact { margin-top: 17px; }

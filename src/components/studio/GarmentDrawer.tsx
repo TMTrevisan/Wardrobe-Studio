@@ -14,6 +14,17 @@ type Props = {
 };
 
 const categories = ['Tops', 'Outerwear', 'Tailoring', 'Bottoms', 'Footwear', 'Accessories', 'Dresses'];
+
+// Keep aligned with PIPELINE_STAGES in src/app/api/catalog/generate/route.ts.
+const PIPELINE_STEPS: Array<{ id: string; label: string }> = [
+  { id: 'source_selected', label: 'Source selected' },
+  { id: 'source_normalized', label: 'Normalized' },
+  { id: 'gpt_image', label: 'GPT Image' },
+  { id: 'background_removed', label: 'Background removed' },
+  { id: 'qa', label: 'QA' },
+  { id: 'saved', label: 'Saved' },
+];
+
 export function GarmentDrawer({ garment, demoMode, onClose, onUpdated, onDeleted }: Props) {
   const [draft, setDraft] = useState(garment);
   const [saving, setSaving] = useState(false);
@@ -22,6 +33,8 @@ export function GarmentDrawer({ garment, demoMode, onClose, onUpdated, onDeleted
   const [catalogImageFailed, setCatalogImageFailed] = useState(false);
   const [message, setMessage] = useState('');
   const [heroUrl, setHeroUrl] = useState<string | null>(null);
+  const [pipelineStage, setPipelineStage] = useState<string | null>(null);
+  const [pipelineFailed, setPipelineFailed] = useState<string | null>(null);
 
   useEffect(() => {
     const previous = document.body.style.overflow;
@@ -89,6 +102,8 @@ export function GarmentDrawer({ garment, demoMode, onClose, onUpdated, onDeleted
       return;
     }
     setGenerating(true);
+    setPipelineStage('source_selected');
+    setPipelineFailed(null);
     setMessage('Building a source-grounded catalog image…');
     try {
       const response = await fetch('/api/catalog/generate', {
@@ -97,7 +112,11 @@ export function GarmentDrawer({ garment, demoMode, onClose, onUpdated, onDeleted
         body: JSON.stringify({ garmentId: draft.id }),
       });
       const json = await response.json();
-      if (!response.ok) throw new Error(json.error || 'Catalog generation failed.');
+      if (!response.ok) {
+        const failedStage = (json?.stage as string | undefined) || pipelineStage;
+        setPipelineFailed(failedStage);
+        throw new Error(json.error || 'Catalog generation failed.');
+      }
       const updated = {
         ...draft,
         catalog_status: 'ready' as const,
@@ -106,12 +125,15 @@ export function GarmentDrawer({ garment, demoMode, onClose, onUpdated, onDeleted
       };
       setDraft(updated);
       onUpdated(updated);
+      const finalStage = (json.data?.stage as string | undefined) || 'saved';
+      setPipelineStage(finalStage);
       setMessage('Catalog image ready');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Catalog generation failed.';
       const failed = { ...draft, catalog_status: 'failed' as const };
       setDraft(failed);
       onUpdated(failed);
+      if (!pipelineFailed) setPipelineFailed(pipelineStage);
       setMessage(`${message} You can retry now.`);
     } finally {
       setGenerating(false);
@@ -201,6 +223,8 @@ export function GarmentDrawer({ garment, demoMode, onClose, onUpdated, onDeleted
   // Reset the selected hero when the underlying garment changes (drawer reuse).
   useEffect(() => {
     setHeroUrl(null);
+    setPipelineStage(null);
+    setPipelineFailed(null);
   }, [draft.id]);
 
   const details = Array.from(new Set(draft.style_detail?.split(',').map((tag) => tag.trim()).filter(Boolean) ?? []));
@@ -297,6 +321,26 @@ export function GarmentDrawer({ garment, demoMode, onClose, onUpdated, onDeleted
             <div><SparkleIcon /><span><strong>Studio catalog image</strong><small>{draft.catalog_source_ready ? 'Reconstruct this exact item as a clean ecommerce cutout.' : 'Re-import a source photo to enable reconstruction.'}</small></span></div>
             <button onClick={generateCatalog} disabled={generating || !draft.catalog_source_ready}>{generating ? 'Generating…' : draft.catalog_status === 'ready' ? 'Regenerate' : 'Generate'}</button>
           </div>
+
+          {(generating || pipelineStage || pipelineFailed) && (
+            <ol className="pipeline-stepper" aria-label="Catalog generation progress">
+              {PIPELINE_STEPS.map((step, index) => {
+                const stageIndex = PIPELINE_STEPS.findIndex((s) => s.id === pipelineStage);
+                const failedIndex = PIPELINE_STEPS.findIndex((s) => s.id === pipelineFailed);
+                const status: 'done' | 'current' | 'failed' | 'pending' =
+                  pipelineFailed && index === failedIndex ? 'failed'
+                  : !pipelineFailed && index === stageIndex ? 'current'
+                  : index < (failedIndex >= 0 ? failedIndex : stageIndex >= 0 ? stageIndex : PIPELINE_STEPS.length) ? 'done'
+                  : 'pending';
+                return (
+                  <li key={step.id} className={`pipeline-step pipeline-step-${status}`} aria-current={status === 'current' ? 'step' : undefined}>
+                    <span className="pipeline-step-marker">{status === 'done' ? '✓' : status === 'failed' ? '!' : index + 1}</span>
+                    <span className="pipeline-step-label">{step.label}</span>
+                  </li>
+                );
+              })}
+            </ol>
+          )}
 
           {message && <p className="drawer-message" role="status">{message}</p>}
           <footer className="drawer-actions">

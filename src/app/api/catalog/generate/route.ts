@@ -19,6 +19,18 @@ type StoredImage = {
   is_primary_profile?: boolean;
 };
 
+// Pipeline stage IDs the drawer renders in its timeline. Keep in sync with
+// GarmentDrawer.tsx PIPELINE_STEPS.
+export const PIPELINE_STAGES = [
+  'source_selected',
+  'source_normalized',
+  'gpt_image',
+  'background_removed',
+  'qa',
+  'saved',
+] as const;
+export type PipelineStage = typeof PIPELINE_STAGES[number];
+
 /**
  * Source crops can originate from older imports and different camera codecs.
  * Always decode and re-encode them before handing them to the image API so
@@ -100,7 +112,19 @@ export const POST = withUser(async ({ user, request }) => {
 
   await user.client.from('garments').update({ catalog_status: 'generating' }).eq('id', garmentId);
 
-  let stage = 'read source image';
+  // Track the most recent pipeline stage for the response and persisted job.
+  let currentStage: PipelineStage = 'source_selected';
+  const setStage = async (next: PipelineStage, progress: number, extra?: Record<string, unknown>) => {
+    currentStage = next;
+    await user.client
+      .from('processing_jobs')
+      .update({
+        progress,
+        output: { stage: next, ...(extra || {}) },
+      })
+      .eq('id', job.id);
+  };
+
   try {
     let sourceBuffer: Buffer;
     let sourceMime = source.mime_type || 'image/jpeg';
@@ -124,9 +148,10 @@ export const POST = withUser(async ({ user, request }) => {
       sourceMime = sourceResponse.headers.get('content-type') || sourceMime;
     }
 
-    stage = 'normalize source image';
+    await setStage('source_normalized', 30);
     const normalizedSource = await normalizeCatalogSource(sourceBuffer);
-    stage = 'generate catalog image';
+
+    await setStage('gpt_image', 60);
     const openai = getOpenAI();
     const generated = await openai.images.edit({
       model: CATALOG_MODEL,
@@ -139,19 +164,19 @@ export const POST = withUser(async ({ user, request }) => {
     const base64 = generated.data?.[0]?.b64_json;
     if (!base64) throw new Error('GPT Image returned no image data.');
 
-    stage = 'remove chroma background';
-    await user.client.from('processing_jobs').update({ progress: 70 }).eq('id', job.id);
+    await setStage('background_removed', 80);
     const chromaPng = Buffer.from(base64, 'base64');
     const cutout = await removeChromaKey(chromaPng, chromaKey);
     const qaStatus = cutout.cornersTransparent && cutout.visibleRatio > 0.03 && cutout.visibleRatio < 0.85
       ? 'passed'
       : 'needs_review';
 
+    await setStage('qa', 90, { qaStatus, visibleRatio: cutout.visibleRatio });
+
     const stamp = Date.now();
     const chromaPath = `${user.id}/${garmentId}/${stamp}-chroma.png`;
     const cutoutPath = `${user.id}/${garmentId}/${stamp}-cutout.png`;
     const bucket = user.client.storage.from('wardrobe-catalog');
-    stage = 'upload catalog images';
     const [chromaUpload, cutoutUpload] = await Promise.all([
       bucket.upload(chromaPath, toStorageFile(chromaPng, 'catalog-chroma.png', 'image/png'), { contentType: 'image/png', upsert: false }),
       bucket.upload(cutoutPath, toStorageFile(cutout.png, 'catalog-cutout.png', 'image/png'), { contentType: 'image/png', upsert: false }),
@@ -159,7 +184,6 @@ export const POST = withUser(async ({ user, request }) => {
     if (chromaUpload.error) throw new Error(`Catalog chroma upload failed: ${chromaUpload.error.message}`);
     if (cutoutUpload.error) throw new Error(`Catalog cutout upload failed: ${cutoutUpload.error.message}`);
 
-    stage = 'save catalog assets';
     await user.client
       .from('garment_assets')
       .update({ is_primary: false })
@@ -201,14 +225,12 @@ export const POST = withUser(async ({ user, request }) => {
     ]);
     if (assetError) throw new Error(`Catalog asset record failed: ${assetError.message}`);
 
-    stage = 'finalize catalog job';
     const { data: signed } = await bucket.createSignedUrl(cutoutPath, 60 * 60);
+    await setStage('saved', 100, { cutoutPath, chromaPath, qaStatus });
     await Promise.all([
       user.client.from('garments').update({ catalog_status: qaStatus === 'passed' ? 'ready' : 'needs_review' }).eq('id', garmentId),
       user.client.from('processing_jobs').update({
         status: 'succeeded',
-        progress: 100,
-        output: { cutoutPath, chromaPath, qaStatus },
         finished_at: new Date().toISOString(),
       }).eq('id', job.id),
     ]);
@@ -233,6 +255,7 @@ export const POST = withUser(async ({ user, request }) => {
       url: signed?.signedUrl,
       qaStatus,
       chromaKey,
+      stage: currentStage,
     });
   } catch (catalogError: unknown) {
     const message = errorMessage(catalogError);
@@ -242,13 +265,14 @@ export const POST = withUser(async ({ user, request }) => {
       sourceId: source.id,
       sourceBucket: source.bucket,
       sourceMime: source.mime_type || 'image/jpeg',
-      stage,
+      stage: currentStage,
       message,
     });
     await Promise.all([
       user.client.from('garments').update({ catalog_status: 'failed' }).eq('id', garmentId),
       user.client.from('processing_jobs').update({
         status: 'failed',
+        output: { stage: currentStage },
         error_message: message,
         finished_at: new Date().toISOString(),
       }).eq('id', job.id),
@@ -266,15 +290,15 @@ export const POST = withUser(async ({ user, request }) => {
         jobId: job.id,
         garmentId,
         outcome: 'failed',
-        stage,
+        stage: currentStage,
         error: message,
       },
       { client: user.client, userId: user.id }
     );
 
     if (/billing hard limit|insufficient quota|billing.*limit/i.test(message)) {
-      return fail(402, 'OpenAI API billing limit reached. Add API credit or raise your usage limit, then retry this garment.');
+      return fail(402, 'OpenAI API billing limit reached. Add API credit or raise your usage limit, then retry this garment.', { stage: currentStage, jobId: job.id });
     }
-    return fail(502, message);
+    return fail(502, message, { stage: currentStage, jobId: job.id });
   }
 });
