@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Image from 'next/image';
 import type { Garment } from '@/types/db';
 import { CloseIcon, SparkleIcon } from './StudioIcons';
@@ -21,6 +21,7 @@ export function GarmentDrawer({ garment, demoMode, onClose, onUpdated, onDeleted
   const [deleting, setDeleting] = useState(false);
   const [catalogImageFailed, setCatalogImageFailed] = useState(false);
   const [message, setMessage] = useState('');
+  const [heroUrl, setHeroUrl] = useState<string | null>(null);
 
   useEffect(() => {
     const previous = document.body.style.overflow;
@@ -141,9 +142,43 @@ export function GarmentDrawer({ garment, demoMode, onClose, onUpdated, onDeleted
   };
 
   const update = <K extends keyof Garment>(key: K, value: Garment[K]) => setDraft((current) => ({ ...current, [key]: value }));
-  const image = catalogImageFailed
+  const defaultHero = catalogImageFailed
     ? draft.source_asset_url || draft.primary_image_url
     : draft.catalog_asset_url || draft.source_asset_url || draft.primary_image_url;
+  const image = heroUrl ?? defaultHero;
+
+  // Group every evidence image and Studio asset by purpose. The gallery is
+  // additive: empty groups are hidden so the rail stays focused on what
+  // actually exists for this garment.
+  const gallery = useMemo(() => {
+    const allImages = (draft.images || []) as Array<any>;
+    const allAssets = (draft.assets || []) as Array<any>;
+    const originals = allImages
+      .filter((img) => img?.url)
+      .map((img) => ({ id: img.id, url: img.url as string, label: img.is_primary_profile ? 'Primary' : (img.role || 'Original'), primary: !!img.is_primary_profile }));
+    const sourceCrops = allAssets
+      .filter((asset) => asset?.kind === 'source_crop' && asset?.url)
+      .map((asset) => ({ id: asset.id, url: asset.url as string, label: 'Source crop', primary: false }));
+    const chroma = allAssets
+      .filter((asset) => asset?.kind === 'catalog_chroma' && asset?.url)
+      .map((asset) => ({ id: asset.id, url: asset.url as string, label: 'Generated background', primary: false }));
+    const cutouts = allAssets
+      .filter((asset) => asset?.kind === 'catalog_cutout' && asset?.url)
+      .sort((a, b) => Number(!!b.is_primary) - Number(!!a.is_primary))
+      .map((asset) => ({ id: asset.id, url: asset.url as string, label: asset.is_primary ? 'Primary catalog' : 'Catalog version', primary: !!asset.is_primary }));
+    return [
+      { key: 'originals', label: 'Originals', items: originals },
+      { key: 'source', label: 'Source crop', items: sourceCrops },
+      { key: 'chroma', label: 'Generated background', items: chroma },
+      { key: 'cutouts', label: 'Catalog cutouts', items: cutouts },
+    ].filter((group) => group.items.length > 0);
+  }, [draft.images, draft.assets]);
+
+  // Reset the selected hero when the underlying garment changes (drawer reuse).
+  useEffect(() => {
+    setHeroUrl(null);
+  }, [draft.id]);
+
   const details = Array.from(new Set(draft.style_detail?.split(',').map((tag) => tag.trim()).filter(Boolean) ?? []));
   const [newDetail, setNewDetail] = useState('');
   const addDetail = () => {
@@ -166,6 +201,34 @@ export function GarmentDrawer({ garment, demoMode, onClose, onUpdated, onDeleted
             {draft.catalog_status === 'ready' ? 'AI catalog cutout' : 'Source crop'}
           </span>
         </header>
+
+        {gallery.length > 0 && (
+          <section className="drawer-gallery" aria-label="All garment images and generated assets">
+            {gallery.map((group) => (
+              <div key={group.key} className="drawer-gallery-group">
+                <p className="drawer-gallery-label">{group.label}</p>
+                <div className="drawer-gallery-rail" role="listbox" aria-label={group.label}>
+                  {group.items.map((item) => {
+                    const isActive = image === item.url;
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        className={`drawer-gallery-thumb${isActive ? ' active' : ''}${item.primary ? ' primary' : ''}`}
+                        onClick={() => setHeroUrl(item.url)}
+                        aria-label={`${group.label}: ${item.label}`}
+                        aria-pressed={isActive}
+                      >
+                        <Image src={item.url} alt="" width={120} height={120} unoptimized />
+                        <span>{item.primary ? '★ ' : ''}{item.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </section>
+        )}
 
         <div className="drawer-form">
           <div className="form-grid two">

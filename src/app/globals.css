@@ -123,6 +123,15 @@ img { display: block; max-width: 100%; }
 .asset-badge { position: absolute; z-index: 2; right: 24px; bottom: 30px; padding: 7px 10px; background: rgba(248,243,233,.82); font-size: 9px; text-transform: uppercase; letter-spacing: .1em; }
 .asset-badge.ready::before { content: ''; display: inline-block; width: 6px; height: 6px; margin-right: 7px; border-radius: 50%; background: #617858; }
 .drawer-form { position: relative; z-index: 2; padding: 10px clamp(26px, 3.4vw, 54px) 50px; }
+.drawer-gallery { position: relative; z-index: 2; padding: 4px clamp(26px, 3.4vw, 54px) 24px; display: flex; flex-direction: column; gap: 14px; background: #f8f3e9; }
+.drawer-gallery-group { display: flex; flex-direction: column; gap: 8px; }
+.drawer-gallery-label { margin: 0; font-size: 9px; text-transform: uppercase; letter-spacing: .13em; color: var(--muted); }
+.drawer-gallery-rail { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 4px; scroll-snap-type: x mandatory; }
+.drawer-gallery-thumb { all: unset; flex: 0 0 96px; display: flex; flex-direction: column; align-items: stretch; gap: 4px; cursor: pointer; scroll-snap-align: start; }
+.drawer-gallery-thumb img { width: 96px; height: 96px; object-fit: cover; background: #d9d5ca; }
+.drawer-gallery-thumb span { font-size: 10px; color: var(--muted); letter-spacing: .04em; padding: 2px 4px; }
+.drawer-gallery-thumb.active img { outline: 2px solid var(--ink); outline-offset: -2px; }
+.drawer-gallery-thumb.primary img { outline: 2px solid #617858; outline-offset: -2px; }
 .form-grid { display: grid; gap: 16px; }
 .form-grid.two { grid-template-columns: 1fr 1fr; }
 .form-grid.compact { margin-top: 17px; }
