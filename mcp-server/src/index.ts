@@ -357,9 +357,14 @@ app.get('/sse', async (req, res) => {
 
   const protocol = req.headers['x-forwarded-proto'] || req.protocol;
   const host = req.headers['x-forwarded-host'] || req.get('host');
-  const absoluteMessageUrl = `${protocol}://${host}/message?sessionId=${sessionId}`;
+  
+  // Provide absolute URL or relative URL containing both sessionId and session_id for client compatibility
+  const relativeMessageUrl = `/message?sessionId=${sessionId}&session_id=${sessionId}`;
+  const absoluteMessageUrl = `${protocol}://${host}${relativeMessageUrl}`;
 
-  res.write(`event: endpoint\ndata: ${absoluteMessageUrl}\n\n`);
+  // Write endpoint event. Standard MCP clients (like Google Spark) sometimes expect a relative URL or absolute URL.
+  // We can write relative URL (e.g. /message?sessionId=...) for standard spec compliance
+  res.write(`event: endpoint\ndata: ${relativeMessageUrl}\n\n`);
 
   req.on('close', () => {
     sseConnections.delete(sessionId);
@@ -367,7 +372,7 @@ app.get('/sse', async (req, res) => {
 });
 
 app.post('/message', async (req, res) => {
-  const { sessionId } = req.query as { sessionId?: string };
+  const sessionId = (req.query.sessionId || req.query.session_id) as string;
 
   if (!sessionId) {
     res.status(400).json({ error: 'Missing sessionId query parameter.' });
