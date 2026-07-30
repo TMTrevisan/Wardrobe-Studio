@@ -358,13 +358,19 @@ app.get('/sse', async (req, res) => {
   const protocol = req.headers['x-forwarded-proto'] || req.protocol;
   const host = req.headers['x-forwarded-host'] || req.get('host');
   
-  // Provide absolute URL or relative URL containing both sessionId and session_id for client compatibility
+  // Some clients expect relative path, some expect absolute url. We will support both:
+  // We can construct the absolute URL, ensuring that if standard proxies drop headers, we default to https when accessed securely
+  const isSecure = req.secure || req.headers['x-forwarded-proto'] === 'https' || req.headers['x-forwarded-ssl'] === 'on';
+  const resolvedProto = isSecure ? 'https' : 'http';
+  
   const relativeMessageUrl = `/message?sessionId=${sessionId}&session_id=${sessionId}`;
-  const absoluteMessageUrl = `${protocol}://${host}${relativeMessageUrl}`;
+  const absoluteMessageUrl = `${resolvedProto}://${host}${relativeMessageUrl}`;
 
-  // Write endpoint event. Standard MCP clients (like Google Spark) sometimes expect a relative URL or absolute URL.
-  // We can write relative URL (e.g. /message?sessionId=...) for standard spec compliance
-  res.write(`event: endpoint\ndata: ${relativeMessageUrl}\n\n`);
+  // Write endpoint event. To satisfy all clients, we can write the relative message URL,
+  // but if the client fails to resolve relative paths, we also output the absolute URL context.
+  // Standard specification requires: event: endpoint\ndata: <uri>\n\n
+  // Let's send the absolute URI as standard, as cloud clients (like Google Spark) run remotely and may not parse relative URIs properly.
+  res.write(`event: endpoint\ndata: ${absoluteMessageUrl}\n\n`);
 
   req.on('close', () => {
     sseConnections.delete(sessionId);
