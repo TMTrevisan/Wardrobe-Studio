@@ -40,7 +40,10 @@ function pickUpdatable(body: Record<string, unknown>): Partial<Record<GarmentUpd
   return out;
 }
 
-// GET all items joined with their garment_images
+// GET all items joined with their garment_images and garment_assets.
+// Release A: every evidence image and every Studio asset receives a signed URL,
+// grouped by kind so the drawer can render the versioned gallery without
+// additional requests.
 export const GET = withUser(async ({ user }) => {
   let { data: items, error } = await user.client
     .from('garments')
@@ -60,52 +63,81 @@ export const GET = withUser(async ({ user }) => {
 
   if (error) return fail(500, error.message);
 
-  const legacyPrimaryPaths = Array.from(new Set((items || []).flatMap((item: any) => {
-    const images = item.garment_images || [];
-    const primary = images.find((image: any) => image.is_primary_profile) || images[0];
-    const path = getLegacyWardrobeImagePath(primary?.storage_path);
-    return path ? [path] : [];
-  })));
-  const legacySignedUrls = new Map<string, string>();
-  if (legacyPrimaryPaths.length) {
-    const { data: signedRows } = await user.client.storage
-      .from('wardrobe-images')
-      .createSignedUrls(legacyPrimaryPaths, 60 * 60);
-    for (const row of signedRows || []) {
-      if (row.path && row.signedUrl) legacySignedUrls.set(row.path, row.signedUrl);
+  // Collect every legacy wardrobe-images path we will need to sign in one
+  // batch request, plus every Studio asset's bucket/path pair.
+  const legacyPaths = new Set<string>();
+  const assetsByBucket = new Map<string, string[]>();
+  for (const item of items || []) {
+    for (const image of item.garment_images || []) {
+      const path = getLegacyWardrobeImagePath(image?.storage_path);
+      if (path) legacyPaths.add(path);
+    }
+    for (const asset of item.garment_assets || []) {
+      if (asset?.bucket && asset?.storage_path) {
+        const paths = assetsByBucket.get(asset.bucket) || [];
+        paths.push(asset.storage_path);
+        assetsByBucket.set(asset.bucket, paths);
+      }
     }
   }
 
-  const itemsWithImages = await Promise.all((items || []).map(async (item: any) => {
-    const images = item.garment_images || [];
-    const assets = item.garment_assets || [];
+  const legacySignedByPath = new Map<string, string>();
+  if (legacyPaths.size) {
+    const { data: signedRows } = await user.client.storage
+      .from('wardrobe-images')
+      .createSignedUrls(Array.from(legacyPaths), 60 * 60);
+    for (const row of signedRows || []) {
+      if (row.path && row.signedUrl) legacySignedByPath.set(row.path, row.signedUrl);
+    }
+  }
+
+  const assetSignedByKey = new Map<string, string>();
+  for (const [bucket, paths] of assetsByBucket) {
+    const { data: signedRows } = await user.client.storage
+      .from(bucket)
+      .createSignedUrls(paths, 60 * 60);
+    for (const row of signedRows || []) {
+      if (row.path && row.signedUrl) assetSignedByKey.set(`${bucket}:${row.path}`, row.signedUrl);
+    }
+  }
+
+  const itemsWithImages = (items || []).map((item: any) => {
+    const images = (item.garment_images || []).map((image: any) => {
+      const legacyPath = getLegacyWardrobeImagePath(image?.storage_path);
+      const signedUrl = legacyPath ? legacySignedByPath.get(legacyPath) || null : null;
+      return {
+        ...image,
+        url: signedUrl || image?.storage_path || null,
+        role: image?.asset_type || image?.role || 'profile',
+      };
+    });
+    const assets = (item.garment_assets || []).map((asset: any) => ({
+      ...asset,
+      url: assetSignedByKey.get(`${asset.bucket}:${asset.storage_path}`) || null,
+    }));
     const catalog = assets.find((asset: any) => asset.kind === 'catalog_cutout' && asset.is_primary)
       || assets.find((asset: any) => asset.kind === 'catalog_cutout');
     const sourceCrop = assets.find((asset: any) => asset.kind === 'source_crop');
-    const primary = images.find((img: any) => img.is_primary_profile) || images[0];
-    const legacyPrimaryPath = getLegacyWardrobeImagePath(primary?.storage_path);
-    const legacyPrimaryUrl = legacyPrimaryPath ? legacySignedUrls.get(legacyPrimaryPath) || null : null;
-    const signAsset = async (asset: any) => {
-      if (!asset?.bucket || !asset?.storage_path) return null;
-      const { data: signed } = await user.client.storage
-        .from(asset.bucket)
-        .createSignedUrl(asset.storage_path, 60 * 60);
-      return signed?.signedUrl || null;
-    };
-    const [catalogUrl, sourceCropUrl] = await Promise.all([signAsset(catalog), signAsset(sourceCrop)]);
+    const chroma = assets.find((asset: any) => asset.kind === 'catalog_chroma');
+    const primaryImage = images.find((img: any) => img.is_primary_profile) || images[0];
+    const legacyPrimaryPath = getLegacyWardrobeImagePath(primaryImage?.storage_path);
+    const legacyPrimaryUrl = legacyPrimaryPath ? legacySignedByPath.get(legacyPrimaryPath) || null : null;
+    const catalogUrl = catalog?.url || null;
+    const sourceCropUrl = sourceCrop?.url || null;
     return {
       ...item,
       images,
       assets,
-      primary_image_url: catalogUrl || sourceCropUrl || legacyPrimaryUrl || (legacyPrimaryPath ? null : primary?.storage_path || null),
+      primary_image_url: catalogUrl || sourceCropUrl || legacyPrimaryUrl || primaryImage?.url || null,
       catalog_asset_url: catalogUrl,
       source_asset_url: sourceCropUrl,
+      chroma_asset_url: chroma?.url || null,
       // Older garments retain their evidence in garment_images rather than
       // Studio source_crop assets. A public legacy primary image is still a
       // valid catalog reconstruction source and must not lose Generate.
       catalog_source_ready: hasCatalogSource(sourceCrop, legacyPrimaryPath),
     };
-  }));
+  });
 
   return ok({ items: itemsWithImages });
 });
