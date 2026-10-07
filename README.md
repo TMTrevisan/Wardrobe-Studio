@@ -4,6 +4,33 @@ Wardrobe Studio turns ordinary outfit photos into a polished digital closet. It 
 
 The project is an additive evolution of Antigravity Threads. Existing garments, wear history, and saved outfits remain usable.
 
+## MCP Architecture & Live Servers
+
+Model Context Protocol (MCP) is a primary interface for Wardrobe Studio, enabling bidirectional integrations with Poke's native assistant and other agentic clients.
+
+### 1. Standalone MCP Server (`mcp-server/` in this repo)
+- **Deployment**: Docker service deployed on Render at [`https://antigravity-threads.onrender.com`](https://antigravity-threads.onrender.com). Redeploys automatically from this repository's `main` branch (Render, not Vercel).
+- **Transports**: SSE transport at `/sse` + `/message`; REST endpoints at `GET /tools` and `POST /tools/:toolName`.
+- **Authentication**: `Authorization: Bearer <redacted>` (validated against `MCP_SECRET`, `POKE_API_KEY` accepted as fallback; fails closed at startup if unset).
+- **Tools (9)**: `list_wardrobe`, `get_styling_recommendations`, `add_wardrobe_item`, `delete_wardrobe_item`, `suggest_outfit`, `get_garment`, `search_wardrobe`, `log_wear`, `wardrobe_stats`.
+
+### 2. Next.js MCP Route (`src/app/api/mcp/route.ts` in this repo)
+- **Deployment**: Served by Vercel project `wardrobe-studio` at [`https://wardrobe-studio-mu.vercel.app/api/mcp`](https://wardrobe-studio-mu.vercel.app/api/mcp). Auto-deploys from this repository's `main` branch.
+- **Transport**: JSON-RPC 2.0 (`initialize`, `notifications/initialized`, `tools/list`, `tools/call`).
+- **Authentication**: `Authorization: Bearer <redacted>` (constant-time verification against `MCP_AUTH_TOKEN`).
+- **Tools (10)**: `fetch_minified_wardrobe`, `add_garment_to_inventory`, `generate_outfit_visual`, `list_garments`, `delete_garment`, `suggest_outfit`, `get_garment`, `search_wardrobe`, `log_wear`, `wardrobe_stats`.
+- **Client Integration**: Used directly by Poke's assistant (maintains 100% backward compatibility for `fetch_minified_wardrobe` and `add_garment_to_inventory`).
+
+### 3. Sibling Reference: Wardrobe-Studio-v2 Route
+- **Deployment**: `src/app/api/mcp/route.ts` in the `Wardrobe-Studio-v2` repo, served by Vercel project `wardrobe-studio-v2` at `https://wardrobe-studio-v2.vercel.app/api/mcp`.
+- **Transport**: JSON-RPC 2.0.
+- **Authentication**: `Authorization: Bearer <redacted>` bound to `MCP_V2_AUTH_TOKEN` and scoped to `MCP_V2_USER_ID`.
+- **Tools (2)**: `fetch_minified_wardrobe`, `get_styling_recommendations`.
+- **Key Divergences**:
+  - *Token Variable*: `MCP_AUTH_TOKEN` (this repo's Next.js route) vs `MCP_SECRET` (this repo's standalone server) vs `MCP_V2_AUTH_TOKEN` (v2).
+  - *User Scoping*: v2 binds queries to `user_id` via service-role key, while this repo's route queries via the Supabase client without user scoping.
+  - *Tool Sets*: v2 offers only 2 tools, whereas this repo exposes 10 tools.
+
 ## AI stack
 
 - **Gemini** scans batches of photos, detects the person and visible garment layers, returns normalized bounding boxes, and suggests structured metadata.

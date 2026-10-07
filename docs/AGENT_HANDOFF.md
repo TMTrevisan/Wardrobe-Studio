@@ -44,9 +44,38 @@ Primary implementation paths:
 - `src/app/api/imports/[id]/analyze/route.ts` — Gemini intake analysis
 - `src/app/api/detections/approve/route.ts` — approve detections and create source crops/items
 - `src/app/api/catalog/generate/route.ts` — GPT edit, chroma removal, asset/job persistence
+- `src/app/api/mcp/route.ts` — JSON-RPC 2.0 MCP route for Poke and generic MCP clients
+- `mcp-server/src/index.ts` — Standalone SSE/REST MCP server deployed on Render
 - `src/lib/ai/catalog.ts` — model, quality/size defaults, prompt, chroma key selection
 - `src/components/studio/` — Studio UI, review flow, Google Photos button, garment drawer
 - `supabase/migrations/20260715000000_wardrobe_studio_pipeline.sql` — current additive Studio schema
+
+## Live MCP Servers & Agent Wiring
+
+Model Context Protocol (MCP) is a primary external interface for Wardrobe Studio. Two live servers are actively maintained from this codebase, plus a known sibling implementation:
+
+### A) Standalone MCP Server (`mcp-server/` in this repo)
+- **Deployment**: Deployed as a Docker service on Render at [`https://antigravity-threads.onrender.com`](https://antigravity-threads.onrender.com). Redeploys automatically from this repository's `main` branch (Render, not Vercel).
+- **Transports**: SSE transport at `/sse` + `/message`, and REST endpoints at `GET /tools` and `POST /tools/:toolName`.
+- **Authentication**: `Authorization: Bearer <redacted>` (validated against `MCP_SECRET`, `POKE_API_KEY` accepted as fallback; fails closed at startup).
+- **Tools (9)**: `list_wardrobe`, `get_styling_recommendations`, `add_wardrobe_item`, `delete_wardrobe_item`, `suggest_outfit`, `get_garment`, `search_wardrobe`, `log_wear`, `wardrobe_stats`.
+
+### B) Next.js MCP Route (`src/app/api/mcp/route.ts` in this repo)
+- **Deployment**: Served by the Vercel project `wardrobe-studio` at [`https://wardrobe-studio-mu.vercel.app/api/mcp`](https://wardrobe-studio-mu.vercel.app/api/mcp). Auto-deploys from this repository's `main` branch.
+- **Transport**: JSON-RPC 2.0 (`initialize`, `notifications/initialized`, `tools/list`, `tools/call`).
+- **Authentication**: `Authorization: Bearer <redacted>` (constant-time verification against `MCP_AUTH_TOKEN`).
+- **Tools (10)**: `fetch_minified_wardrobe`, `add_garment_to_inventory`, `generate_outfit_visual`, `list_garments`, `delete_garment`, `suggest_outfit`, `get_garment`, `search_wardrobe`, `log_wear`, `wardrobe_stats`.
+- **Client Integration**: Used directly by Poke's assistant. Backward compatibility is strictly required for `add_garment_to_inventory` and `fetch_minified_wardrobe` (input schema, pipe-delimited format, and response envelope).
+
+### C) Sibling Reference: `Wardrobe-Studio-v2` (`src/app/api/mcp/route.ts`)
+- **Deployment**: Served by Vercel project `wardrobe-studio-v2` at `https://wardrobe-studio-v2.vercel.app/api/mcp`.
+- **Transport**: JSON-RPC 2.0.
+- **Authentication**: `Authorization: Bearer <redacted>` validated against `MCP_V2_AUTH_TOKEN`, scoped to `MCP_V2_USER_ID`.
+- **Tools (2)**: `fetch_minified_wardrobe`, `get_styling_recommendations`.
+- **Key Divergences**:
+  - *Token Variable*: `MCP_AUTH_TOKEN` (this repo's Next.js route) vs `MCP_SECRET` (this repo's standalone server) vs `MCP_V2_AUTH_TOKEN` (v2).
+  - *User Scoping*: v2 binds queries to a specific `user_id` via Supabase service-role key, whereas this repo's route uses the anon client without user scoping.
+  - *Tool Sets*: v2 offers only 2 tools, whereas this repo exposes 10 tools.
 
 ## Cost policy (current)
 
@@ -113,7 +142,10 @@ Server-only:
 
 - `OPENAI_API_KEY`
 - `GEMINI_API_KEY`
+- `MCP_AUTH_TOKEN` (shared secret for the Next.js JSON-RPC MCP route)
+- `MCP_SECRET` (shared secret for the standalone Render MCP server; `POKE_API_KEY` accepted as fallback)
 - optional `OPENAI_IMAGE_MODEL`, `OPENAI_IMAGE_QUALITY`, `OPENAI_CATALOG_IMAGE_SIZE`
+- optional `GEMINI_VISION_MODEL`
 - optional legacy `SUPABASE_SERVICE_ROLE_KEY` only where explicitly required by server-side legacy jobs
 
 Public/browser:
@@ -149,4 +181,4 @@ Then verify the full production story manually:
 - Run focused tests plus typecheck/build after implementation work.
 - Push intentional commits to `main` only after validation.
 - Avoid destructive Git operations.
-- The existing `AGENTS.md` contains older Poke/MCP architecture notes. It is historical context, not the current prioritized product plan; this handoff file supersedes it for Wardrobe Studio work.
+- The existing `AGENTS.md` contains historical Poke/MCP architecture context; see the "Live MCP Servers & Agent Wiring" section above for the current live server deployments and tool contracts.
