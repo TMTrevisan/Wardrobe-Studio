@@ -53,11 +53,20 @@ export const POST = withUser(async ({ user, request }) => {
           // check: only allow our own host. This blocks a tampered DB row
           // from making the server fetch arbitrary URLs and pipe them into
           // Gemini (and exfiltrate via prompt-injection in the response).
-          if (supabaseUrl && !img.storage_path.startsWith(supabaseUrl)) {
-            throw new Error('Security Violation: image storage domain mismatch.');
+          if (supabaseUrl) {
+            try {
+              const parsed = new URL(img.storage_path);
+              const expectedHost = new URL(supabaseUrl).hostname;
+              if (parsed.hostname !== expectedHost) {
+                throw new Error('Security Violation: image storage domain mismatch.');
+              }
+            } catch (err: any) {
+              throw new Error(err.message?.startsWith('Security') ? err.message : 'Security Violation: invalid image storage URL.');
+            }
           }
           const imageResponse = await fetch(img.storage_path, {
             signal: AbortSignal.timeout(15_000),
+            redirect: 'error',
           });
           if (!imageResponse.ok) {
             throw new Error(`Failed to fetch image: ${img.storage_path}`);

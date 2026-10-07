@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { assertPublicHttpsUrl } from '@/lib/url-safety';
+import crypto from 'node:crypto';
 
 // Expose tools manifest
 const TOOLS = [
@@ -77,7 +79,17 @@ export async function POST(request: Request) {
       );
     }
 
-    if (!authHeader || authHeader !== `Bearer ${systemToken}`) {
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return new Response(
+        JSON.stringify({ jsonrpc: '2.0', error: { code: -32001, message: 'Unauthorized access.' }, id: null }),
+        { status: 401, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const token = authHeader.substring(7).trim();
+    const tokenBuf = Buffer.from(token);
+    const systemTokenBuf = Buffer.from(systemToken);
+    if (tokenBuf.length !== systemTokenBuf.length || !crypto.timingSafeEqual(tokenBuf, systemTokenBuf)) {
       return new Response(
         JSON.stringify({ jsonrpc: '2.0', error: { code: -32001, message: 'Unauthorized access.' }, id: null }),
         { status: 401, headers: { 'Content-Type': 'application/json' } }
@@ -137,6 +149,18 @@ export async function POST(request: Request) {
 
         case 'add_garment_to_inventory': {
           const { category, sub_category, brand, color_family, hex_code, tonal_value, fabric_type, fit_block, image_url } = args || {};
+
+          if (image_url) {
+            try {
+              await assertPublicHttpsUrl(image_url);
+            } catch (urlErr: any) {
+              return NextResponse.json({
+                jsonrpc: '2.0',
+                error: { code: -32602, message: `Invalid image_url: ${urlErr.message}` },
+                id,
+              });
+            }
+          }
 
           // Insert core garment
           const { data: garment, error: garmentError } = await supabase

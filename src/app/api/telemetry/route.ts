@@ -29,7 +29,6 @@ export const GET = withUser(async ({ user }) => {
         .select('*')
         .eq('user_id', user.id)
         .limit(500),
-    () => user.client.from('billing_and_token_ledger').select('*').limit(500),
   ]) {
     const { data, error } = await query();
     if (!error) {

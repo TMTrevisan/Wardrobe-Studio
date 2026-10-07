@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
-import { GoogleGenAI } from '@google/genai';
+import { withUser } from '@/lib/api';
 
-export async function POST(request: Request) {
+export const POST = withUser(async ({ user, request }) => {
   try {
     const { messages, provider, apiKey, wardrobe } = await request.json();
 
@@ -194,4 +194,4 @@ Rules & Instructions:
     console.error('Chat API Error:', error);
     return NextResponse.json({ error: error.message || 'An error occurred during chat.' }, { status: 500 });
   }
-}
+});

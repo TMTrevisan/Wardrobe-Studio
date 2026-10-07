@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
-import { ok } from '@/lib/api';
+import { ok, withUser } from '@/lib/api';
 
-export async function POST(request: Request) {
+export const POST = withUser(async ({ user, request }) => {
   try {
     const { personImage, garmentImage, category } = await request.json();
 
@@ -81,5 +81,5 @@ export async function POST(request: Request) {
     console.error('VTON API error:', error);
     return NextResponse.json({ error: error.message || 'An error occurred during virtual try-on' }, { status: 500 });
   }
-}
+});
 export const maxDuration = 60; // Allow enough time for polling Replicate (Vercel deployment max timeout)

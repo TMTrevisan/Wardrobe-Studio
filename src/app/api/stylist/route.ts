@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server';
 import { GoogleGenAI } from '@google/genai';
 import { logTelemetry } from '@/lib/telemetry';
-import { ok } from '@/lib/api';
+import { ok, withUser } from '@/lib/api';
 
 const geminiApiKey = process.env.GEMINI_API_KEY || '';
 const ai = geminiApiKey ? new GoogleGenAI({ apiKey: geminiApiKey }) : null;
 
-export async function POST(request: Request) {
+export const POST = withUser(async ({ user, request }) => {
   try {
     if (!ai) {
       return NextResponse.json(
@@ -135,4 +135,4 @@ export async function POST(request: Request) {
       { status: 500 }
     );
   }
-}
+});

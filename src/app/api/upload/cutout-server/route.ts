@@ -2,11 +2,19 @@ import { NextResponse } from 'next/server';
 import { withUser } from '@/lib/api';
 import { fail, ok } from '@/lib/api';
 import { logTelemetry } from '@/lib/telemetry';
+import { assertPublicHttpsUrl } from '@/lib/url-safety';
 
 export const POST = withUser(async ({ user, request }) => {
   const { garmentId, storagePath } = await request.json();
 
   if (!garmentId || !storagePath) return fail(400, 'Missing garmentId or storagePath.');
+
+  // SSRF guard: ensure storagePath is a valid public HTTPS URL
+  try {
+    await assertPublicHttpsUrl(storagePath);
+  } catch (urlErr: any) {
+    return fail(400, `Refused storage path URL: ${urlErr.message}`);
+  }
 
   // 0. Verify ownership.
   const { data: garment, error: ownErr } = await user.client
@@ -72,7 +80,10 @@ export const POST = withUser(async ({ user, request }) => {
   // Attempt 2: Hugging Face Serverless Inference API (briaai/RMBG-1.4)
   if (!processedImageUrl && process.env.HF_TOKEN) {
     try {
-      const imageResponse = await fetch(storagePath, { signal: AbortSignal.timeout(15_000) });
+      const imageResponse = await fetch(storagePath, {
+        signal: AbortSignal.timeout(15_000),
+        redirect: 'error',
+      });
       if (imageResponse.ok) {
         const imageBlob = await imageResponse.blob();
         const buffer = Buffer.from(await imageBlob.arrayBuffer());
@@ -116,7 +127,10 @@ export const POST = withUser(async ({ user, request }) => {
   // python3 on PATH, so we never try this in production by default.
   if (!processedImageUrl && process.env.BG_REMOVAL_LOCAL_ENABLED === 'true' && localRemoverUrl) {
     try {
-      const imageResponse = await fetch(storagePath, { signal: AbortSignal.timeout(15_000) });
+      const imageResponse = await fetch(storagePath, {
+        signal: AbortSignal.timeout(15_000),
+        redirect: 'error',
+      });
       if (imageResponse.ok) {
         const imageBlob = await imageResponse.blob();
         const buffer = Buffer.from(await imageBlob.arrayBuffer());

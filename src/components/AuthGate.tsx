@@ -27,7 +27,16 @@ function installAuthHeaderProxy(): () => void {
     try {
       const { data } = await supabase.auth.getSession();
       const token = data.session?.access_token;
-      if (token) {
+      const urlStr =
+        typeof resource === 'string'
+          ? resource
+          : resource instanceof URL
+            ? resource.href
+            : (resource as Request)?.url || '';
+      const isInternal =
+        urlStr.startsWith('/') ||
+        (typeof window !== 'undefined' && urlStr.startsWith(window.location.origin));
+      if (token && isInternal) {
         const headers = new Headers(config.headers);
         if (!headers.has('Authorization')) {
           headers.set('Authorization', `Bearer ${token}`);

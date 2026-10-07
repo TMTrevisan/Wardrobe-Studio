@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
-import { ok } from '@/lib/api';
+import { ok, withUser } from '@/lib/api';
 
-export async function POST(request: Request) {
+export const POST = withUser(async ({ user, request }) => {
   try {
     const { prompt } = await request.json();
 
@@ -73,7 +73,7 @@ export async function POST(request: Request) {
       { status: 500 }
     );
   }
-}
+});
 
 /**
  * Generates a tiny inline SVG that previews the prompt text on a warm

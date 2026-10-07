@@ -61,8 +61,16 @@ export const POST = withUser(async ({ user, request }) => {
   if (!source?.storage_path) return fail(400, 'Add a source image before generating a catalog image.');
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-  if (!source.bucket && supabaseUrl && !source.storage_path.startsWith(supabaseUrl)) {
-    return fail(400, 'Source image must come from this wardrobe storage project.');
+  if (!source.bucket && supabaseUrl) {
+    try {
+      const parsed = new URL(source.storage_path);
+      const expectedHost = new URL(supabaseUrl).hostname;
+      if (parsed.hostname !== expectedHost) {
+        return fail(400, 'Source image must come from this wardrobe storage project.');
+      }
+    } catch {
+      return fail(400, 'Invalid source image URL.');
+    }
   }
 
   const chromaKey = chooseChromaKey([garment.hex_code]);
@@ -117,7 +125,10 @@ export const POST = withUser(async ({ user, request }) => {
       sourceBuffer = Buffer.from(await blob.arrayBuffer());
       sourceMime = blob.type || sourceMime;
     } else {
-      const sourceResponse = await fetch(source.storage_path, { signal: AbortSignal.timeout(30_000) });
+      const sourceResponse = await fetch(source.storage_path, {
+        signal: AbortSignal.timeout(30_000),
+        redirect: 'error',
+      });
       if (!sourceResponse.ok) throw new Error('Could not read the source image.');
       sourceBuffer = Buffer.from(await sourceResponse.arrayBuffer());
       sourceMime = sourceResponse.headers.get('content-type') || sourceMime;

@@ -26,7 +26,8 @@ export const PATCH = withUser(async ({ user, request }) => {
   const { error: setError } = await user.client
     .from('garment_images')
     .update({ is_primary_profile: true })
-    .eq('id', imageId);
+    .eq('id', imageId)
+    .eq('garment_id', garmentId);
 
   if (setError) return fail(500, `Set primary failed: ${setError.message}`);
 

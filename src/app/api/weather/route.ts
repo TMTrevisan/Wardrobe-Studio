@@ -48,11 +48,13 @@ export async function POST(request: Request) {
   try {
     const { lat, lon } = await request.json();
 
-    if (lat === undefined || lon === undefined) {
-      return NextResponse.json({ error: 'Latitude and Longitude are required.' }, { status: 400 });
+    const numLat = Number(lat);
+    const numLon = Number(lon);
+    if (!Number.isFinite(numLat) || !Number.isFinite(numLon)) {
+      return NextResponse.json({ error: 'Latitude and Longitude must be valid numbers.' }, { status: 400 });
     }
 
-    const geohash = encodeGeohash(Number(lat), Number(lon), 8);
+    const geohash = encodeGeohash(numLat, numLon, 8);
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
 
     // 1. Audit Database Cache
@@ -81,8 +83,8 @@ export async function POST(request: Request) {
     let rawData: any = {};
 
     if (apiKey) {
-      const url = `https://api.pirateweather.net/forecast/${apiKey}/${lat},${lon}`;
-      const response = await fetch(url);
+      const url = `https://api.pirateweather.net/forecast/${apiKey}/${encodeURIComponent(numLat)},${encodeURIComponent(numLon)}`;
+      const response = await fetch(url, { signal: AbortSignal.timeout(10_000) });
       if (!response.ok) {
         throw new Error(`Pirate Weather API responded with status ${response.status}`);
       }

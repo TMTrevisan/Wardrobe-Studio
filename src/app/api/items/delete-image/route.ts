@@ -19,6 +19,7 @@ export const DELETE = withUser(async ({ user, request }) => {
     .from('garment_images')
     .select('storage_path, is_primary_profile')
     .eq('id', imageId)
+    .eq('garment_id', garmentId)
     .single();
 
   if (fetchError || !imgRecord) return fail(404, 'Image record not found.');
@@ -43,7 +44,8 @@ export const DELETE = withUser(async ({ user, request }) => {
   const { error: dbError } = await user.client
     .from('garment_images')
     .delete()
-    .eq('id', imageId);
+    .eq('id', imageId)
+    .eq('garment_id', garmentId);
 
   if (dbError) return fail(500, `Database deletion failed: ${dbError.message}`);
 

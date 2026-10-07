@@ -213,7 +213,7 @@ export const PUT = withUser(async ({ user, request }) => {
       'Accept-Language': 'en-US,en;q=0.9',
       'Referer': 'https://www.google.com/'
     },
-    redirect: 'follow',
+    redirect: 'error',
     signal: AbortSignal.timeout(10_000),
   });
 
